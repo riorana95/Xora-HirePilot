@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Applier Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+    <header class="app-header">
+        <div>
+            <h1>Job Applier Dashboard</h1>
+            <div class="subtitle">Develop by Rana Rahul — LinkedIn & Naukri</div>
+        </div>
+        <div class="header-actions">
+            <select id="platformSelect" class="platform-select">
+                <option value="linkedin">LinkedIn</option>
+                <option value="naukri">Naukri</option>
+            </select>
+            <div class="status-badge">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Idle</span>
+            </div>
+            <button class="btn btn-success" id="startBtn">Start Applying</button>
+            <button class="btn btn-danger" id="stopBtn" style="display:none">Stop Bot</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="search">Search & Filters</button>
+            <button class="tab-btn" data-tab="skip">Skip Rules</button>
+            <button class="tab-btn" data-tab="personals">Personal Info</button>
+            <button class="tab-btn" data-tab="questions">Application Answers</button>
+            <button class="tab-btn" data-tab="credentials">Credentials & AI</button>
+            <button class="tab-btn" data-tab="naukri">Naukri Search</button>
+            <button class="tab-btn" data-tab="naukri-profile">Naukri Profile <span class="tab-badge" id="unknownBadge" style="display:none">0</span></button>
+            <button class="tab-btn" data-tab="settings">Bot Settings</button>
+            <button class="tab-btn" data-tab="history">Applied Jobs</button>
+        </nav>
+
+        <!-- Search & Filters -->
+        <div class="tab-panel active" id="panel-search">
+            <div class="card launch-card">
+                <h2>Ready to Apply?</h2>
+                <p>Configure your search terms and LinkedIn filters below, save your settings, then click <strong>Start Applying</strong> to launch the bot.</p>
+            </div>
+            <div class="card">
+                <h2>Search Terms</h2>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label>Job Titles to Search</label>
+                        <div class="tag-input-wrap" id="search_terms_tags"></div>
+                        <span class="help-text">Press Enter to add each job title (e.g. Angular Developer, Frontend Engineer)</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Search Location</label>
+                        <input type="text" id="search_location" placeholder="Bengaluru, Karnataka, India">
+                    </div>
+                    <div class="form-group">
+                        <label>Switch After N Applications</label>
+                        <input type="number" id="switch_number" min="1" value="100">
+                    </div>
+                    <div class="form-group">
+                        <label>Randomize Search Order</label>
+                        <select id="randomize_search_order">
+                            <option value="false">No</option>
+                            <option value="true">Yes</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>LinkedIn Filters</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Sort By</label>
+                        <select id="sort_by"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Date Posted</label>
+                        <select id="date_posted"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Salary</label>
+                        <select id="salary"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Easy Apply Only</label>
+                        <select id="easy_apply_only">
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Experience Level</label>
+                        <div class="checkbox-group" id="experience_level"></div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Job Type</label>
+                        <div class="checkbox-group" id="job_type"></div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Work Mode</label>
+                        <div class="checkbox-group" id="on_site"></div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Target Companies (optional)</label>
+                        <div class="tag-input-wrap" id="companies_tags"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Under 10 Applicants</label>
+                        <select id="under_10_applicants"><option value="false">No</option><option value="true">Yes</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>In Your Network</label>
+                        <select id="in_your_network"><option value="false">No</option><option value="true">Yes</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Fair Chance Employer</label>
+                        <select id="fair_chance_employer"><option value="false">No</option><option value="true">Yes</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Pause After Filters</label>
+                        <select id="pause_after_filters"><option value="true">Yes</option><option value="false">No</option></select>
+                    </div>
+                </div>
+            </div>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="saveSection('search')">Save Search Settings</button>
+            </div>
+        </div>
+
+        <!-- Skip Rules -->
+        <div class="tab-panel" id="panel-skip">
+            <div class="card">
+                <h2>Skip Irrelevant Jobs</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Your Experience (years)</label>
+                        <input type="number" id="current_experience" min="-1" value="5">
+                        <span class="help-text">Use -1 to ignore experience requirements</span>
+                    </div>
+                    <div class="form-group">
+                        <label>Has Masters Degree</label>
+                        <select id="did_masters"><option value="true">Yes</option><option value="false">No</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Security Clearance</label>
+                        <select id="security_clearance"><option value="false">No</option><option value="true">Yes</option></select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Bad Words in Company About</label>
+                        <div class="tag-input-wrap" id="about_company_bad_words_tags"></div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Bad Words in Job Description</label>
+                        <div class="tag-input-wrap" id="bad_words_tags"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="saveSection('search')">Save Skip Rules</button>
+            </div>
+        </div>
+
+        <!-- Personal Info -->
+        <div class="tab-panel" id="panel-personals">
+            <div class="card">
+                <h2>Personal Details</h2>
+                <div class="form-grid">
+                    <div class="form-group"><label>First Name</label><input type="text" id="first_name"></div>
+                    <div class="form-group"><label>Middle Name</label><input type="text" id="middle_name"></div>
+                    <div class="form-group"><label>Last Name</label><input type="text" id="last_name"></div>
+                    <div class="form-group"><label>Phone Number</label><input type="text" id="phone_number"></div>
+                    <div class="form-group"><label>Current City</label><input type="text" id="current_city"></div>
+                    <div class="form-group"><label>Street</label><input type="text" id="street"></div>
+                    <div class="form-group"><label>State</label><input type="text" id="state"></div>
+                    <div class="form-group"><label>Zipcode</label><input type="text" id="zipcode"></div>
+                    <div class="form-group"><label>Country</label><input type="text" id="country"></div>
+                    <div class="form-group"><label>Ethnicity</label><select id="ethnicity"></select></div>
+                    <div class="form-group"><label>Gender</label><select id="gender"></select></div>
+                    <div class="form-group"><label>Disability Status</label><select id="disability_status"></select></div>
+                    <div class="form-group"><label>Veteran Status</label><select id="veteran_status"></select></div>
+                </div>
+            </div>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="saveSection('personals')">Save Personal Info</button>
+            </div>
+        </div>
+
+        <!-- Application Answers -->
+        <div class="tab-panel" id="panel-questions">
+            <div class="card">
+                <h2>Easy Apply Answers</h2>
+                <div class="form-grid">
+                    <div class="form-group full-width"><label>Resume Path</label><input type="text" id="default_resume_path"></div>
+                    <div class="form-group"><label>Years of Experience</label><input type="text" id="years_of_experience"></div>
+                    <div class="form-group"><label>Require Visa</label><select id="require_visa"></select></div>
+                    <div class="form-group"><label>Website</label><input type="text" id="website"></div>
+                    <div class="form-group full-width"><label>LinkedIn Profile URL</label><input type="text" id="linkedIn"></div>
+                    <div class="form-group full-width"><label>US Citizenship Status</label><select id="us_citizenship"></select></div>
+                    <div class="form-group"><label>Desired Salary</label><input type="number" id="desired_salary"></div>
+                    <div class="form-group"><label>Current CTC</label><input type="number" id="current_ctc"></div>
+                    <div class="form-group"><label>Notice Period (days)</label><input type="number" id="notice_period" min="0"></div>
+                    <div class="form-group full-width"><label>LinkedIn Headline</label><input type="text" id="linkedin_headline"></div>
+                    <div class="form-group full-width"><label>LinkedIn Summary</label><textarea id="linkedin_summary"></textarea></div>
+                    <div class="form-group full-width"><label>Cover Letter</label><textarea id="cover_letter"></textarea></div>
+                    <div class="form-group"><label>Recent Employer</label><input type="text" id="recent_employer"></div>
+                    <div class="form-group"><label>Confidence Level</label><input type="text" id="confidence_level"></div>
+                    <div class="form-group"><label>Pause Before Submit</label><select id="pause_before_submit"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Pause at Failed Question</label><select id="pause_at_failed_question"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Overwrite Previous Answers</label><select id="overwrite_previous_answers"><option value="true">Yes</option><option value="false">No</option></select></div>
+                </div>
+            </div>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="saveSection('questions')">Save Application Answers</button>
+            </div>
+        </div>
+
+        <!-- Credentials -->
+        <div class="tab-panel" id="panel-credentials">
+            <div class="card">
+                <h2>LinkedIn Login</h2>
+                <div class="form-grid">
+                    <div class="form-group full-width"><label>Email / Username</label><input type="email" id="username"></div>
+                    <div class="form-group full-width"><label>Password</label><input type="password" id="password" placeholder="Leave blank to keep current"></div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>AI Settings (Optional)</h2>
+                <div class="form-grid">
+                    <div class="form-group"><label>Use AI</label><select id="use_AI"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>AI Provider</label><select id="ai_provider"></select></div>
+                    <div class="form-group full-width"><label>API URL</label><input type="text" id="llm_api_url"></div>
+                    <div class="form-group full-width"><label>API Key</label><input type="password" id="llm_api_key" placeholder="Leave blank to keep current"></div>
+                    <div class="form-group"><label>Model</label><input type="text" id="llm_model"></div>
+                    <div class="form-group"><label>Stream Output</label><select id="stream_output"><option value="false">No</option><option value="true">Yes</option></select></div>
+                </div>
+            </div>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="saveSection('secrets')">Save Credentials</button>
+            </div>
+        </div>
+
+        <!-- Naukri Search -->
+        <div class="tab-panel" id="panel-naukri">
+            <div class="card launch-card">
+                <h2>Naukri Job Search</h2>
+                <p>Configure Naukri keywords, locations, and filters. Sign in with <strong>Google</strong> when the browser opens. Select <strong>Naukri</strong> in the header, then click Start Applying.</p>
+            </div>
+            <div class="card">
+                <h2>Search Terms & Locations</h2>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label>Job Keywords</label>
+                        <div class="tag-input-wrap" id="naukri_search_terms_tags"></div>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Search Locations</label>
+                        <div class="tag-input-wrap" id="search_locations_tags"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Applications Per Search</label>
+                        <input type="number" id="max_applications_per_search" min="1" value="50">
+                    </div>
+                    <div class="form-group">
+                        <label>Randomize Search Order</label>
+                        <select id="naukri_randomize_search_order"><option value="false">No</option><option value="true">Yes</option></select>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Naukri Filters</h2>
+                <div class="form-grid">
+                    <div class="form-group"><label>Experience Min (years)</label><input type="number" id="experience_min" min="-1"></div>
+                    <div class="form-group"><label>Experience Max (years)</label><input type="number" id="experience_max" min="-1"></div>
+                    <div class="form-group"><label>Salary Min (LPA, 0=skip)</label><input type="number" id="salary_min_lpa" min="0"></div>
+                    <div class="form-group"><label>Salary Max (LPA, 0=skip)</label><input type="number" id="salary_max_lpa" min="0"></div>
+                    <div class="form-group"><label>Job Age (days, 0=skip)</label><input type="number" id="job_age_days" min="0"></div>
+                    <div class="form-group"><label>Freshness</label><select id="freshness"><option value="">No filter</option><option>Last 1 day</option><option>Last 3 days</option><option>Last 7 days</option><option>Last 15 days</option><option>Last 30 days</option></select></div>
+                    <div class="form-group full-width">
+                        <label>Work Mode</label>
+                        <div class="checkbox-group" id="work_mode"></div>
+                    </div>
+                    <div class="form-group full-width"><label>Filter Locations</label><div class="tag-input-wrap" id="naukri_filter_locations_tags"></div></div>
+                    <div class="form-group full-width"><label>Department</label><div class="tag-input-wrap" id="naukri_departments_tags"></div></div>
+                    <div class="form-group full-width"><label>Salary Range</label><div class="tag-input-wrap" id="naukri_salary_ranges_tags"></div></div>
+                    <div class="form-group full-width"><label>Company Type</label><div class="tag-input-wrap" id="naukri_company_types_tags"></div></div>
+                    <div class="form-group full-width"><label>Role Category</label><div class="tag-input-wrap" id="naukri_role_categories_tags"></div></div>
+                    <div class="form-group full-width"><label>Education</label><div class="tag-input-wrap" id="naukri_educations_tags"></div></div>
+                    <div class="form-group full-width"><label>Posted By</label><div class="tag-input-wrap" id="naukri_posted_by_tags"></div></div>
+                    <div class="form-group full-width"><label>Industry</label><div class="tag-input-wrap" id="naukri_industries_tags"></div></div>
+                    <div class="form-group full-width"><label>Top Companies</label><div class="tag-input-wrap" id="naukri_top_companies_tags"></div></div>
+                    <div class="form-group"><label>Apply on Naukri Only</label><select id="apply_on_naukri_only"><option value="true">Yes</option><option value="false">No</option></select></div>
+                    <div class="form-group"><label>Pause After Filters</label><select id="naukri_pause_after_filters"><option value="true">Yes</option><option value="false">No</option></select></div>
+                    <div class="form-group"><label>Run Non-Stop</label><select id="naukri_run_non_stop"><option value="false">No</option><option value="true">Yes</option></select></div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Skip Rules (Naukri)</h2>
+                <div class="form-grid">
+                    <div class="form-group"><label>Your Experience (years)</label><input type="number" id="naukri_current_experience" min="-1"></div>
+                    <div class="form-group"><label>Has Masters</label><select id="naukri_did_masters"><option value="true">Yes</option><option value="false">No</option></select></div>
+                    <div class="form-group full-width"><label>Excluded Title Keywords</label><div class="tag-input-wrap" id="naukri_bad_title_tags"></div><span class="help-text">Skip listings when the job title contains any keyword, e.g. <code>.net</code> or <code>python</code>.</span></div>
+                    <div class="form-group full-width"><label>Bad Words in Company</label><div class="tag-input-wrap" id="naukri_bad_company_tags"></div></div>
+                    <div class="form-group full-width"><label>Bad Words in JD</label><div class="tag-input-wrap" id="naukri_bad_words_tags"></div></div>
+                </div>
+            </div>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="saveSection('search_naukri')">Save Naukri Search Settings</button>
+            </div>
+        </div>
+
+        <!-- Naukri Profile -->
+        <div class="tab-panel" id="panel-naukri-profile">
+            <div class="card launch-card">
+                <h2>Naukri Profile &amp; Configuration</h2>
+                <p>Configure your Naukri login, personal details used for applications, and manage recruiter question answers. New questions discovered by the bot will appear below.</p>
+            </div>
+
+            <div class="card">
+                <h2>Naukri Login Credentials</h2>
+                <p class="help-text" style="margin-bottom:1rem">The bot uses these to auto-login to Naukri. Alternatively, sign in with Google when the browser opens.</p>
+                <div class="form-grid">
+                    <div class="form-group full-width"><label>Email / Username</label><input type="email" id="naukri_username" placeholder="Your Naukri login email"></div>
+                    <div class="form-group full-width"><label>Password</label><input type="password" id="naukri_password" placeholder="Leave blank to keep current"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Personal Details for Naukri</h2>
+                <p class="help-text" style="margin-bottom:1rem">These details are used to auto-fill Naukri application forms.</p>
+                <div class="form-grid">
+                    <div class="form-group"><label>First Name</label><input type="text" id="np_first_name"></div>
+                    <div class="form-group"><label>Middle Name</label><input type="text" id="np_middle_name"></div>
+                    <div class="form-group"><label>Last Name</label><input type="text" id="np_last_name"></div>
+                    <div class="form-group"><label>Phone Number</label><input type="text" id="np_phone_number"></div>
+                    <div class="form-group"><label>Current City</label><input type="text" id="np_current_city"></div>
+                    <div class="form-group"><label>Years of Experience</label><input type="text" id="np_years_of_experience"></div>
+                    <div class="form-group"><label>Notice Period (days)</label><input type="number" id="np_notice_period" min="0"></div>
+                    <div class="form-group"><label>Current CTC (&#x20B9;)</label><input type="number" id="np_current_ctc"></div>
+                    <div class="form-group"><label>Expected CTC (&#x20B9;)</label><input type="number" id="np_desired_salary"></div>
+                    <div class="form-group"><label>Recent Employer</label><input type="text" id="np_recent_employer"></div>
+                    <div class="form-group full-width"><label>LinkedIn Profile URL</label><input type="text" id="np_linkedIn"></div>
+                    <div class="form-group full-width"><label>Portfolio / Website</label><input type="text" id="np_website"></div>
+                    <div class="form-group full-width"><label>Resume Path</label><input type="text" id="np_default_resume_path"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Recruiter Questions (Apply Popup)</h2>
+                <p class="help-text" style="margin-bottom:1rem">When you click Apply, Naukri may ask chat-style questions one at a time (e.g. "Are you willing to relocate to Hyderabad?"). The bot answers these automatically and clicks Save.</p>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Willing to Relocate</label>
+                        <select id="willing_to_relocate"><option value="Yes">Yes</option><option value="No">No</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Default Yes/No (unmatched questions)</label>
+                        <select id="default_yes_no_answer"><option value="Yes">Yes</option><option value="No">No</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Pause on Unknown Question</label>
+                        <select id="pause_at_unknown_naukri_question"><option value="false">No &mdash; use default</option><option value="true">Yes &mdash; let me answer manually</option></select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Custom Answers (keyword &rarr; answer, one per line)</label>
+                        <textarea id="custom_naukri_answers_text" rows="8" placeholder="relocate: yes&#10;hyderabad: yes&#10;notice period: 30"></textarea>
+                        <span class="help-text">Format: <code>keyword: answer</code> &mdash; keyword is matched inside the question text.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" id="unknownQuestionsCard">
+                <h2>&#x1F514; New Questions Discovered by Bot</h2>
+                <p class="help-text" style="margin-bottom:1rem">The bot logs unknown questions it encounters during applications. Review and provide answers below &mdash; they'll be used for future applications automatically.</p>
+                <div id="unknownQuestionsContent">
+                    <div class="empty-state" id="unknownEmpty">No unknown questions yet. Run the bot to discover questions from job applications.</div>
+                    <div class="jobs-table-wrap" id="unknownTableWrap" style="display:none">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Question</th>
+                                    <th>Options</th>
+                                    <th>Discovered</th>
+                                    <th>Status</th>
+                                    <th>Keyword</th>
+                                    <th>Your Answer</th>
+                                </tr>
+                            </thead>
+                            <tbody id="unknownQuestionsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="action-bar" id="unknownAnswerBar" style="display:none">
+                    <button class="btn btn-success" onclick="saveUnknownAnswers()">&#x1F4BE; Save Answers</button>
+                    <button class="btn btn-outline" onclick="loadUnknownQuestions()">&#x1F504; Refresh</button>
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="saveNaukriProfile()">Save Naukri Profile</button>
+            </div>
+        </div>
+
+        <!-- Bot Settings -->
+        <div class="tab-panel" id="panel-settings">
+            <div class="card">
+                <h2>Bot Behavior</h2>
+                <div class="form-grid">
+                    <div class="form-group"><label>Close External Tabs</label><select id="close_tabs"><option value="true">Yes</option><option value="false">No</option></select></div>
+                    <div class="form-group"><label>Follow Companies</label><select id="follow_companies"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Run Non-Stop</label><select id="run_non_stop"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Alternate Sort By</label><select id="alternate_sortby"><option value="true">Yes</option><option value="false">No</option></select></div>
+                    <div class="form-group"><label>Cycle Date Posted</label><select id="cycle_date_posted"><option value="true">Yes</option><option value="false">No</option></select></div>
+                    <div class="form-group"><label>Stop Date Cycle at 24hr</label><select id="stop_date_cycle_at_24hr"><option value="true">Yes</option><option value="false">No</option></select></div>
+                    <div class="form-group"><label>Click Gap (seconds)</label><input type="number" id="click_gap" min="0"></div>
+                    <div class="form-group"><label>Run in Background</label><select id="run_in_background"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Safe Mode</label><select id="safe_mode"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Stealth Mode</label><select id="stealth_mode"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Keep Screen Awake</label><select id="keep_screen_awake"><option value="true">Yes</option><option value="false">No</option></select></div>
+                    <div class="form-group"><label>Smooth Scroll</label><select id="smooth_scroll"><option value="false">No</option><option value="true">Yes</option></select></div>
+                    <div class="form-group"><label>Disable Extensions</label><select id="disable_extensions"><option value="false">No</option><option value="true">Yes</option></select></div>
+                </div>
+            </div>
+            <div class="action-bar">
+                <button class="btn btn-primary" onclick="saveSection('settings')">Save Bot Settings</button>
+            </div>
+        </div>
+
+        <!-- Applied Jobs History -->
+        <div class="tab-panel" id="panel-history">
+            <div class="card">
+                <h2>Applied Jobs History</h2>
+                <div class="form-group" style="margin-bottom:1rem">
+                    <label>Filter by Platform</label>
+                    <select id="historyPlatformFilter" onchange="loadJobs()">
+                        <option value="">All</option>
+                        <option value="LinkedIn">LinkedIn</option>
+                        <option value="Naukri">Naukri</option>
+                    </select>
+                </div>
+                <div class="jobs-table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Platform</th>
+                                <th>Job Title</th>
+                                <th>Company</th>
+                                <th>HR Contact</th>
+                                <th>External Link</th>
+                                <th>Applied</th>
+                            </tr>
+                        </thead>
+                        <tbody id="jobsBody"></tbody>
+                    </table>
+                </div>
+                <div class="empty-state" id="jobsEmpty" style="display:none">No applications yet. Start the bot to begin applying!</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
