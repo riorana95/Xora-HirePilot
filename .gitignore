@@ -12,3 +12,8 @@ secrets.py
 config/personals.py
 .venv
 apikeys.py
+/config/
+/LICENSE
+/README.md
+/walkthrough.md
+config_guide.md
