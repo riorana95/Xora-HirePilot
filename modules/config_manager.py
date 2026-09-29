@@ -263,3 +263,73 @@ def save_config(section_updates: dict[str, dict[str, Any]]) -> None:
                 updates.pop(key + "_set", None)
         _update_config_file(file_path, updates, multiline_fields=section.get("multiline", []), dict_fields=section.get("dict_fields", []))
         importlib.import_module(section["module"])
+
+
+def sync_active_profile() -> bool:
+    '''Sync the active profile into config/*.py files so the bot can read them.'''
+    from modules.profile_manager import get_active_profile
+    profile = get_active_profile()
+    if not profile:
+        return False
+    
+    identity = profile.get('identity', {})
+    creds = profile.get('credentials', {})
+    prof = profile.get('professional', {})
+    qa = profile.get('qa', {})
+    
+    # Map profile fields to config sections
+    updates = {
+        'personals': {
+            'first_name': identity.get('first_name', ''),
+            'middle_name': identity.get('middle_name', ''),
+            'last_name': identity.get('last_name', ''),
+            'phone_number': identity.get('phone_number', ''),
+            'current_city': identity.get('current_city', ''),
+            'street': identity.get('street', ''),
+            'state': identity.get('state', ''),
+            'zipcode': identity.get('zipcode', ''),
+            'country': identity.get('country', ''),
+            'ethnicity': identity.get('ethnicity', ''),
+            'gender': identity.get('gender', ''),
+            'disability_status': identity.get('disability_status', 'No'),
+            'veteran_status': identity.get('veteran_status', 'No'),
+        },
+        'secrets': {
+            'username': creds.get('linkedin_email', '') or creds.get('naukri_email', ''),
+            'password': creds.get('linkedin_password', '') or creds.get('naukri_password', ''),
+        },
+        'questions': {
+            'years_of_experience': prof.get('years_of_experience', ''),
+            'current_ctc': prof.get('current_ctc', 0),
+            'desired_salary': prof.get('desired_salary', 0),
+            'notice_period': prof.get('notice_period', 0),
+            'recent_employer': prof.get('recent_employer', ''),
+            'linkedIn': prof.get('linkedIn', ''),
+            'website': prof.get('website', ''),
+            'default_resume_path': prof.get('default_resume_path', ''),
+            'linkedin_headline': prof.get('linkedin_headline', ''),
+            'linkedin_summary': prof.get('linkedin_summary', ''),
+            'cover_letter': prof.get('cover_letter', ''),
+            'user_information_all': prof.get('user_information_all', ''),
+            'confidence_level': prof.get('confidence_level', '8'),
+            'require_visa': qa.get('require_visa', 'No'),
+            'us_citizenship': qa.get('us_citizenship', ''),
+            'pause_before_submit': qa.get('pause_before_submit', False),
+            'pause_at_failed_question': qa.get('pause_at_failed_question', False),
+            'overwrite_previous_answers': qa.get('overwrite_previous_answers', True),
+        },
+        'naukri_questions': {
+            'willing_to_relocate': qa.get('willing_to_relocate', 'Yes'),
+            'default_yes_no_answer': qa.get('default_yes_no_answer', 'Yes'),
+            'pause_at_unknown_naukri_question': qa.get('pause_at_unknown_naukri_question', False),
+            'custom_naukri_answers': qa.get('custom_naukri_answers', {}),
+        },
+    }
+    
+    # Only include password if non-empty (don't overwrite with blank)
+    if not updates['secrets']['password']:
+        del updates['secrets']['password']
+    
+    save_config(updates)
+    return True
+

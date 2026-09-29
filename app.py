@@ -16,7 +16,11 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
-from modules.config_manager import get_all_config, save_config
+from modules.config_manager import get_all_config, save_config, sync_active_profile
+from modules.profile_manager import (
+    list_profiles, get_profile, create_profile, update_profile,
+    delete_profile, activate_profile, create_default_profile_from_config,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -80,6 +84,11 @@ def api_bot_start():
         try:
             env = os.environ.copy()
             env["LAUNCHED_FROM_UI"] = "1"
+            # Sync active profile into config files before launching bot
+            try:
+                sync_active_profile()
+            except Exception as sync_err:
+                print(f"Profile sync warning: {sync_err}")
             script = BOT_SCRIPTS[platform]
             _bot_process = subprocess.Popen(
                 [sys.executable, str(script), "--no-alerts"],
@@ -166,6 +175,77 @@ def update_applied_date(job_id):
 
 
 UNKNOWN_QUESTIONS_LOG = PROJECT_ROOT / "logs" / "naukri_unknown_questions.jsonl"
+
+
+@app.route("/api/profiles", methods=["GET"])
+def api_list_profiles():
+    try:
+        result = list_profiles()
+        # Auto-migrate: if no profiles exist, create default from current config
+        if not result["profiles"]:
+            profile = create_default_profile_from_config()
+            result = list_profiles()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profiles/<profile_id>", methods=["GET"])
+def api_get_profile(profile_id):
+    try:
+        return jsonify(get_profile(profile_id))
+    except FileNotFoundError:
+        return jsonify({"error": "Profile not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profiles", methods=["POST"])
+def api_create_profile():
+    try:
+        data = request.get_json(silent=True) or {}
+        name = data.get("name", "").strip()
+        if not name:
+            return jsonify({"error": "Profile name is required"}), 400
+        profile = create_profile(name, data.get("data"))
+        return jsonify(profile), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profiles/<profile_id>", methods=["PUT"])
+def api_update_profile(profile_id):
+    try:
+        data = request.get_json(silent=True) or {}
+        profile = update_profile(profile_id, data)
+        return jsonify(profile)
+    except FileNotFoundError:
+        return jsonify({"error": "Profile not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profiles/<profile_id>", methods=["DELETE"])
+def api_delete_profile(profile_id):
+    try:
+        delete_profile(profile_id)
+        return jsonify({"message": "Profile deleted"})
+    except FileNotFoundError:
+        return jsonify({"error": "Profile not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/profiles/<profile_id>/activate", methods=["POST"])
+def api_activate_profile(profile_id):
+    try:
+        activate_profile(profile_id)
+        sync_active_profile()
+        return jsonify({"message": f"Profile '{profile_id}' activated and synced"})
+    except FileNotFoundError:
+        return jsonify({"error": "Profile not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/naukri/unknown-questions", methods=["GET"])

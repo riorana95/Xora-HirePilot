@@ -94,7 +94,7 @@ Cover Letter
 
 # Your user_information_all letter in quotes, use \n to add line breaks if using single quotes "user_information_all".You can skip \n if using triple quotes """user_information_all""" (This question makes sense though)
 # We use this to pass to AI to generate answer from information , Assuing Information contians eg: resume  all the information like name, experience, skills, Country, any illness etc. 
-user_information_all ="""
+user_information_all = """
 User Information
 """
 ##<
