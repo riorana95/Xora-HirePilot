@@ -36,6 +36,14 @@ asked for: a skipped-jobs CSV with the reason for every rejection (including
 skill mismatch), Title/Company in the failed-jobs CSV, and Applied / Failed /
 Skipped tables in the dashboard.
 
+A fourth pass rebuilt the dashboard as a friendly, self-explanatory UI and
+fixed three things you reported directly: expired Naukri job links now come
+with a "find similar live jobs" fallback, saving an unknown question's answer
+now visibly flips the row to answered (previously the answer was wiped by the
+profile sync on the next run), and every AI-answered recruiter question is
+recorded to a review page where you can mark it correct/wrong and teach a
+keyword:answer pair for the wrong ones.
+
 ## Root causes and fixes
 
 ### Bug 1 — Question was extracted but options were ignored (27 failures)
@@ -255,6 +263,74 @@ The JS read `job.timestamp/job_title/job_url` but the API returns
   the skipped CSV with 1,161 historically-skipped jobs so the new tab has
   data immediately.
 
+## Fourth pass — friendly UI, expired links, answer persistence, AI review
+
+### Bug 16 — "Job you are looking for is expired" on applied links
+
+Naukri removes job pages roughly 30 days after posting — your application
+history outlives the link. The Applied table now shows the direct link plus an
+amber hint ("link may be expired") with a **find similar live jobs** fallback
+that searches Naukri for the job's title (`_naukri_search_link`). The
+application itself is not affected: it happened, and the row (plus the job's
+detail drawer) records when and with which answers.
+
+### Bug 17 — saved unknown-question answers showed "pending" forever
+
+Two separate causes:
+
+1. The save endpoint wrote only to `config/naukri_questions.py`. On the next
+   bot start, `sync_active_profile()` overwrites that file from the *profile*,
+   wiping your answers (the profile's `custom_naukri_answers` was never
+   updated). The endpoint now writes **both** the config and the active
+   profile.
+2. The Unknown Questions table recomputed status purely from
+   config keywords, so a saved answer didn't visibly change the row. Rows in
+   `naukri_unknown_questions.jsonl` are now marked `answered` with the value,
+   and the table shows a green "✓ Answered: …" chip immediately after saving
+   (inputs on answered rows are disabled to avoid re-entering).
+
+### Bug 18 — AI answers were invisible
+
+The bot's AI-answered recruiter questions existed only as console lines
+("Asking Gemini to answer Naukri question: X / Gemini answered: Y") —
+`ai_answers` was never populated in the activity log. New module
+`modules/naukri/ai_answers_log.py` records every AI-sourced answer to
+`logs/naukri_ai_answers.jsonl`, with a one-time seed that parses the existing
+`logs/log.txt` so the page opens with your real history (the "No, I will not
+attend → Yes, I will attend" style pairs).
+
+### Feature — AI Answers review page (your feedback loop)
+
+New page lists every AI-answered question (deduped, with how often it was
+asked and the options seen):
+
+- **✓ Correct / ✗ Wrong** buttons mark your feedback (persisted).
+- On a wrong one, **🎓 Teach correct answer** opens a keyword + answer form;
+  saving writes the pair into `custom_naukri_answers` (config *and* profile),
+  marks the question wrong, and shows a "taught pair" chip. The bot answers
+  that question itself from then on — no AI needed.
+- Filter (pending/correct/wrong/all) and search; the sidebar badge shows the
+  pending-review count.
+
+### Feature — redesigned dashboard
+
+- Sidebar layout with Overview / Job History / AI Answers / Unknown Questions
+  / Profiles / Job Filters / Bot Config; Start/Stop moved into the sidebar
+  status card; profile switch in the top bar.
+- **Overview**: stat cards (applied/failed/skipped, today counts, pending AI
+  reviews), live color-coded console, and a "What the bot is doing" timeline
+  (every apply/skip/failure with its reason, from the activity log).
+- **Job History**: segmented Applied/Failed/Skipped tabs with counts, search
+  across title/company/reason, platform filter, reason pills
+  (skill-mismatch vs experience vs other), and a **detail drawer** per job:
+  full event history, every question answered with its answer, search term
+  that found it, and the description snippet.
+- Skill-filter config (`required_skills` / `possessed_skills`) now editable as
+  tag inputs on the Job Filters page.
+- Unknown Questions moved to its own page with clear answered/pending chips.
+- `modules/helpers.py` now imports pyautogui lazily/optionally, so headless
+  environments (and the dashboard's API endpoints) never crash on the import.
+
 ## Files changed
 
 | File | Change |
@@ -271,9 +347,11 @@ The JS read `job.timestamp/job_title/job_url` but the API returns
 | `modules/validator.py` | Checks for the new config keys |
 | `config/search_naukri.py` | New keys: `failed_job_retry_limit`, `nonstop_cycle_gap_minutes`, `required_skills`, `possessed_skills` |
 | `config/settings.py` | New key: `skipped_file_name` |
-| `static/js/dashboard.js` | Empty number field no longer saves as 0; fixed Applied-Jobs field mapping; Failed/Skipped history views; preflight on Start |
-| `templates/dashboard.html` | Job History tab with Applied/Failed/Skipped tables |
-| `app.py` | UTF-8 bot pipe + early-exit detection, `/api/bot/preflight`, `/api/jobs/failed`, `/api/jobs/skipped`, `/api/jobs/summary`, BOM-tolerant reads |
+| `static/js/dashboard.js` | Empty number field no longer saves as 0; fixed Applied-Jobs field mapping; Failed/Skipped history views; preflight on Start; full page rewrite: sidebar nav, stats, timeline, drawer, AI review, unknown-questions answered state |
+| `templates/dashboard.html` | Full redesign: sidebar + 7 pages (Overview, Job History, AI Answers, Unknown Questions, Profiles, Filters, Config), stat cards, job drawer |
+| `static/css/dashboard.css` | New design system: sidebar shell, stat cards, timeline, segmented controls, drawer, AI review cards, responsive |
+| `modules/naukri/ai_answers_log.py` | NEW — records AI-answered questions, feedback, keyword pairs, log.txt seeding |
+| `app.py` | UTF-8 bot pipe + early-exit detection, preflight, `/api/jobs/failed|skipped|timeline|<id>/detail`, `/api/stats`, Search_Link fallback, AI-answers endpoints (list/feedback/teach), unknown-questions answered marking + profile-aware save, BOM-tolerant reads |
 | `scripts/migrate_history_csvs.py` | One-time migration/seeding of the history CSVs (already applied to the shipped data) |
 
 No existing config values were changed; `notice_period = 40`, `desired_salary = 25`,
@@ -282,7 +360,7 @@ keep their meaning.
 
 ## Verification
 
-`scripts/test_naukri_fix.py` (kept in the archive) runs 78 offline checks with
+`scripts/test_naukri_fix.py` (kept in the archive) runs 99 offline checks with
 stubbed selenium against the real modules — no browser or login needed:
 
 1. **Pure logic** (18 checks): range parsing with unit conversion; resolving the
@@ -312,6 +390,14 @@ stubbed selenium against the real modules — no browser or login needed:
    failed rows carry Title/Company; skipped rows carry reason + detail.
 10. **charmap-proof logger** (2 checks): ASCII-safe fallback replaces
     non-encodable characters instead of raising.
+11. **AI answers review log** (12 checks): record + dedupe with occurrence
+    counts, feedback persistence that survives new occurrences, keyword pairs,
+    log.txt seeding (pairs parsed, re-seed a no-op), empty input ignored.
+12. **Unknown-question answered marking** (5 checks): the Bug 17 fix — save
+    returns 200, the row is marked answered in the JSONL, GET shows it answered
+    with the value, other rows stay pending.
+13. **Expired-link fallback URL** (3 checks): spaces to dashes, empty title
+    still yields a search, unsafe characters encoded.
 
 `scripts/test_bot_loop.py` adds 7 integration checks that run the real
 `apply_to_naukri_jobs()` loop against a scripted world (stubbed browser, search
@@ -325,7 +411,7 @@ The `--check` preflight was exercised end-to-end: valid config → exit 0 with
 `CHECK OK` and a summary; bad config (empty required fields) → exit 2 with the
 exact field named; missing dependency → exit 3 with a pip-install hint.
 
-Result: **78/78 + 7/7 pass**. Against the original code the same fake-DOM
+Result: **99/99 + 7/7 pass**. Against the original code the same fake-DOM
 scenario reproduces the production failure verbatim
 (`Naukri Q [radio]: "What is your Notice Period?" → "40"` →
 `Could not select/type recruiter answer: "40"` → no question answered), proving

@@ -3,65 +3,238 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Job Applier Dashboard</title>
+    <title>HirePilot — Auto Job Applier</title>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
-    <header class="app-header">
-        <div class="header-content">
-            <div class="header-titles">
-                <h1>Xora HirePilot</h1>
-                <p class="subtitle">Auto Job Applier — LinkedIn & Naukri — Develop by Rana Rahul</p>
-            </div>
-            <div class="header-controls">
-                <div class="platform-select-wrap">
-                    <select id="platformSelect" class="form-control">
-                        <option value="linkedin">LinkedIn Bot</option>
-                        <option value="naukri" selected>Naukri Bot</option>
-                    </select>
-                </div>
-                <div class="status-badge">
-                    <span id="statusDot" class="status-dot"></span>
-                    <span id="statusText">Stopped</span>
-                </div>
-                <button id="startBtn" class="btn btn-success" onclick="startBot()">▶ Start</button>
-                <button id="stopBtn" class="btn btn-danger" onclick="stopBot()">■ Stop</button>
+
+<div class="app-shell">
+
+    <!-- ═══════════════ SIDEBAR ═══════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <div class="brand-logo">⚡</div>
+            <div class="brand-text">
+                <h1>HirePilot</h1>
+                <span>Auto Job Applier</span>
             </div>
         </div>
-    </header>
 
-    <div class="bot-console" id="botConsole">
-        <div class="console-header">
-            <span class="console-title">🖥️ Bot Console</span>
-            <span class="console-status" id="consoleStatus">Idle</span>
-            <button class="btn btn-sm btn-outline" onclick="clearBotLogs()">Clear</button>
-            <button class="btn btn-sm btn-outline" onclick="toggleConsole()">▼</button>
+        <div class="bot-status-card">
+            <div class="bot-status-row">
+                <span id="statusDot" class="status-dot stopped"></span>
+                <span id="statusText">Stopped</span>
+            </div>
+            <div class="bot-controls">
+                <select id="platformSelect" class="form-control bot-platform">
+                    <option value="linkedin">LinkedIn</option>
+                    <option value="naukri" selected>Naukri</option>
+                </select>
+            </div>
+            <div class="bot-buttons">
+                <button id="startBtn" class="btn btn-success btn-block" onclick="startBot()">▶ Start Bot</button>
+                <button id="stopBtn" class="btn btn-danger btn-block" onclick="stopBot()">■ Stop</button>
+            </div>
         </div>
-        <pre class="console-output" id="consoleOutput">Waiting for bot to start...</pre>
-    </div>
 
-    <div class="container">
-        <nav class="tabs">
-            <button class="tab-btn active" data-tab="profiles">Profiles</button>
-            <button class="tab-btn" data-tab="filters">Job Filters</button>
-            <button class="tab-btn" data-tab="config">Bot Config</button>
-            <button class="tab-btn" data-tab="history">Applied Jobs</button>
+        <nav class="side-nav">
+            <button class="nav-item active" data-page="overview"><span class="nav-icon">📊</span> Overview</button>
+            <button class="nav-item" data-page="history"><span class="nav-icon">💼</span> Job History
+                <span class="nav-badge" id="navHistoryBadge" style="display:none"></span></button>
+            <button class="nav-item" data-page="questions"><span class="nav-icon">🤖</span> AI Answers
+                <span class="nav-badge warn" id="navAiBadge" style="display:none"></span></button>
+            <button class="nav-item" data-page="unknown"><span class="nav-icon">❓</span> Unknown Questions
+                <span class="nav-badge warn" id="navUnknownBadge" style="display:none"></span></button>
+            <div class="nav-sep"></div>
+            <button class="nav-item" data-page="profiles"><span class="nav-icon">👤</span> Profiles</button>
+            <button class="nav-item" data-page="filters"><span class="nav-icon">🎯</span> Job Filters</button>
+            <button class="nav-item" data-page="config"><span class="nav-icon">⚙️</span> Bot Config</button>
         </nav>
 
-        <!-- TAB 1: Profiles -->
-        <div class="tab-panel active" id="panel-profiles">
-            <!-- Profile Management Bar -->
+        <div class="sidebar-footer">
+            <span class="muted">Develop by Rana Rahul</span>
+        </div>
+    </aside>
+
+    <!-- ═══════════════ MAIN ═══════════════ -->
+    <main class="main-area">
+
+        <header class="topbar">
+            <button class="icon-btn" id="sidebarToggle">☰</button>
+            <h2 id="pageTitle">Overview</h2>
+            <div class="topbar-right">
+                <select id="profileSelect" class="form-control" style="max-width:180px"></select>
+            </div>
+        </header>
+
+        <div class="page-scroll">
+
+        <!-- ═════════ PAGE: OVERVIEW ═════════ -->
+        <section class="page active" id="page-overview">
+            <div class="stat-grid">
+                <div class="stat-card success">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-body">
+                        <div class="stat-value" id="statApplied">0</div>
+                        <div class="stat-label">Jobs Applied</div>
+                        <div class="stat-sub" id="statAppliedToday">0 today</div>
+                    </div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-icon">❌</div>
+                    <div class="stat-body">
+                        <div class="stat-value" id="statFailed">0</div>
+                        <div class="stat-label">Failed</div>
+                        <div class="stat-sub" id="statFailedToday">0 today</div>
+                    </div>
+                </div>
+                <div class="stat-card neutral">
+                    <div class="stat-icon">⏭️</div>
+                    <div class="stat-body">
+                        <div class="stat-value" id="statSkipped">0</div>
+                        <div class="stat-label">Skipped (with reasons)</div>
+                        <div class="stat-sub" id="statSkippedToday">0 today</div>
+                    </div>
+                </div>
+                <div class="stat-card warn">
+                    <div class="stat-icon">🤖</div>
+                    <div class="stat-body">
+                        <div class="stat-value" id="statAiPending">0</div>
+                        <div class="stat-label">AI Answers to review</div>
+                        <div class="stat-sub"><a href="#" onclick="goToPage('questions');return false;">Review now →</a></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overview-grid">
+                <div class="card console-card">
+                    <div class="card-head">
+                        <h3>🖥️ Live Console</h3>
+                        <div class="card-head-right">
+                            <span class="console-status" id="consoleStatus">○ Idle</span>
+                            <button class="btn btn-sm btn-outline" onclick="clearBotLogs()">Clear</button>
+                        </div>
+                    </div>
+                    <pre class="console-output" id="consoleOutput">Waiting for bot to start...</pre>
+                    <div class="console-legend">
+                        <span class="lg lg-success">applied</span>
+                        <span class="lg lg-error">failed</span>
+                        <span class="lg lg-warn">warning</span>
+                        <span class="lg lg-info">info</span>
+                    </div>
+                </div>
+
+                <div class="card timeline-card">
+                    <div class="card-head">
+                        <h3>🕘 What the bot is doing</h3>
+                        <button class="btn btn-sm btn-outline" onclick="loadTimeline()">🔄</button>
+                    </div>
+                    <div class="mini-timeline" id="miniTimeline">
+                        <div class="empty-state">No activity yet. Start the bot — every apply, skip and failure will appear here with its reason.</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═════════ PAGE: JOB HISTORY ═════════ -->
+        <section class="page" id="page-history">
+            <div class="history-topbar">
+                <div class="segmented">
+                    <button class="seg-btn active" data-view="applied">✅ Applied <span class="seg-count" id="segApplied">0</span></button>
+                    <button class="seg-btn" data-view="failed">❌ Failed <span class="seg-count" id="segFailed">0</span></button>
+                    <button class="seg-btn" data-view="skipped">⏭️ Skipped <span class="seg-count" id="segSkipped">0</span></button>
+                </div>
+                <div class="history-tools">
+                    <input type="text" id="historySearch" class="form-control" placeholder="🔍 Search title / company / reason..." oninput="renderHistory()">
+                    <select id="historyPlatformFilter" class="form-control" onchange="renderHistory()">
+                        <option value="">All platforms</option>
+                        <option value="LinkedIn">LinkedIn</option>
+                        <option value="Naukri">Naukri</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card table-card">
+                <div class="jobs-table-wrap" id="appliedTableWrap">
+                    <table>
+                        <thead><tr><th>#</th><th>Job</th><th>Company</th><th>Location</th><th>Applied</th><th>Links</th></tr></thead>
+                        <tbody id="jobsBody"></tbody>
+                    </table>
+                </div>
+                <div class="jobs-table-wrap" id="failedTableWrap" style="display:none">
+                    <table>
+                        <thead><tr><th>#</th><th>Job</th><th>Company</th><th>Why it failed</th><th>Date</th><th>Links</th></tr></thead>
+                        <tbody id="failedJobsBody"></tbody>
+                    </table>
+                </div>
+                <div class="jobs-table-wrap" id="skippedTableWrap" style="display:none">
+                    <table>
+                        <thead><tr><th>#</th><th>Job</th><th>Company</th><th>Why it was skipped</th><th>Exp.</th><th>Date</th></tr></thead>
+                        <tbody id="skippedJobsBody"></tbody>
+                    </table>
+                </div>
+                <div class="empty-state" id="historyEmpty" style="display:none"></div>
+                <div class="load-more-wrap" id="loadMoreWrap" style="display:none">
+                    <button class="btn btn-outline" onclick="loadMoreHistory()">Show more</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═════════ PAGE: AI ANSWERS (feedback) ═════════ -->
+        <section class="page" id="page-questions">
+            <div class="page-intro">
+                <h3>🤖 AI-answered recruiter questions</h3>
+                <p>Every question the AI answered during applications is listed here. Tell it whether the answer was right — if wrong, teach a <b>keyword → answer</b> pair and the bot will answer that question itself from now on.</p>
+                <div class="ai-counts" id="aiCounts"></div>
+                <div class="history-tools">
+                    <input type="text" id="aiSearch" class="form-control" placeholder="🔍 Search question or answer...">
+                    <select id="aiFilter" class="form-control">
+                        <option value="pending">⏳ Pending review</option>
+                        <option value="all">All</option>
+                        <option value="correct">✅ Marked correct</option>
+                        <option value="wrong">❌ Marked wrong</option>
+                    </select>
+                </div>
+            </div>
+            <div id="aiAnswersList" class="ai-answers-list">
+                <div class="empty-state">No AI answers recorded yet. They appear here after the next bot run.</div>
+            </div>
+        </section>
+
+        <!-- ═════════ PAGE: UNKNOWN QUESTIONS ═════════ -->
+        <section class="page" id="page-unknown">
+            <div class="page-intro">
+                <h3>❓ Questions the bot could not answer</h3>
+                <p>These recruiter questions had no answer in config and the AI could not help. Provide a keyword + answer — saved pairs are used on the next run, and the row turns green immediately.</p>
+            </div>
+            <div class="card">
+                <div class="empty-state" id="unknownEmpty">No unknown questions. 🎉 The bot answered everything so far.</div>
+                <div class="jobs-table-wrap" id="unknownTableWrap" style="display:none">
+                    <table>
+                        <thead><tr><th>#</th><th>Question</th><th>Options seen</th><th>Status</th><th>Keyword</th><th>Your answer</th></tr></thead>
+                        <tbody id="unknownQuestionsBody"></tbody>
+                    </table>
+                </div>
+                <div class="action-bar" id="unknownAnswerBar" style="display:none">
+                    <button class="btn btn-success" onclick="saveUnknownAnswers()">💾 Save answers</button>
+                    <button class="btn btn-outline" onclick="loadUnknownQuestions()">🔄 Refresh</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═════════ PAGE: PROFILES ═════════ -->
+        <section class="page" id="page-profiles">
             <div class="card profile-bar">
                 <div class="profile-controls">
                     <label>Active Profile</label>
-                    <select id="profileSelect"></select>
-                    <button class="btn btn-success btn-sm" onclick="createNewProfile()">+ New</button>
-                    <button class="btn btn-outline btn-sm" onclick="duplicateProfile()">Duplicate</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteCurrentProfile()">Delete</button>
+                    <div class="profile-btns">
+                        <button class="btn btn-success btn-sm" onclick="createNewProfile()">+ New</button>
+                        <button class="btn btn-outline btn-sm" onclick="duplicateProfile()">Duplicate</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteCurrentProfile()">Delete</button>
+                    </div>
                 </div>
             </div>
 
-            <!-- Identity Card -->
             <div class="card">
                 <h2>Identity</h2>
                 <div class="form-grid">
@@ -81,7 +254,6 @@
                 </div>
             </div>
 
-            <!-- Credentials Card -->
             <div class="card">
                 <h2>Login Credentials</h2>
                 <p class="help-text">Credentials are stored per-profile. Different profiles can use different accounts.</p>
@@ -93,7 +265,6 @@
                 </div>
             </div>
 
-            <!-- Professional Details Card -->
             <div class="card">
                 <h2>Professional Details</h2>
                 <div class="form-grid">
@@ -113,7 +284,6 @@
                 </div>
             </div>
 
-            <!-- Q&A Settings Card -->
             <div class="card">
                 <h2>Application Q&A</h2>
                 <p class="help-text">These answers are used when the bot encounters questions during job applications on any platform.</p>
@@ -167,11 +337,10 @@
             <div class="action-bar">
                 <button class="btn btn-primary" onclick="saveCurrentProfile()">Save Profile</button>
             </div>
-        </div>
+        </section>
 
-        <!-- TAB 2: Job Filters -->
-        <div class="tab-panel" id="panel-filters">
-            <!-- Platform Switcher -->
+        <!-- ═════════ PAGE: JOB FILTERS ═════════ -->
+        <section class="page" id="page-filters">
             <div class="card">
                 <div class="platform-switcher">
                     <button class="platform-btn active" data-platform="naukri" onclick="switchFilterPlatform('naukri')">Naukri</button>
@@ -179,7 +348,6 @@
                 </div>
             </div>
 
-            <!-- LinkedIn Filters (hidden by default) -->
             <div id="linkedin-filters" style="display:none">
                 <div class="card">
                     <h2>LinkedIn Search</h2>
@@ -262,7 +430,6 @@
                 </div>
             </div>
 
-            <!-- Naukri Filters (shown by default) -->
             <div id="naukri-filters">
                 <div class="card">
                     <h2>Naukri Search</h2>
@@ -331,16 +498,18 @@
                         <div class="form-group full-width"><label>Bad Company Words</label><div id="naukri_bad_company_tags" class="tag-input-container"></div></div>
                         <div class="form-group full-width"><label>Bad Words</label><div id="naukri_bad_words_tags" class="tag-input-container"></div></div>
                         <div class="form-group full-width"><label>Avoid Companies (skip all jobs from these)</label><div id="naukri_avoid_companies_tags" class="tag-input-container"></div><span class="help-text">Add company names to completely avoid. Any job from these companies will be skipped.</span></div>
+                        <div class="form-group full-width"><label>Required Skills (watch for in JDs)</label><div id="naukri_required_skills_tags" class="tag-input-container"></div><span class="help-text">JDs clearly requiring skills missing from your Possessed Skills are skipped with reason "Skill mismatch". Leave empty to disable.</span></div>
+                        <div class="form-group full-width"><label>Possessed Skills (skills you have)</label><div id="naukri_possessed_skills_tags" class="tag-input-container"></div></div>
                     </div>
                 </div>
                 <div class="action-bar">
                     <button class="btn btn-primary" onclick="saveSection('search_naukri')">Save Naukri Filters</button>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- TAB 3: Bot Config -->
-        <div class="tab-panel" id="panel-config">
+        <!-- ═════════ PAGE: BOT CONFIG ═════════ -->
+        <section class="page" id="page-config">
             <div class="card">
                 <h2>AI Settings</h2>
                 <div class="form-grid">
@@ -452,80 +621,27 @@
                 </div>
             </div>
 
-            <!-- Unknown Questions Card -->
-            <div class="card" id="unknownQuestionsCard">
-                <h2>🔔 New Questions Discovered by Bot</h2>
-                <p class="help-text" style="margin-bottom:1rem">The bot logs unknown questions it encounters during applications. Review and provide answers below — they'll be saved to your active profile.</p>
-                <div id="unknownQuestionsContent">
-                    <div class="empty-state" id="unknownEmpty">No unknown questions yet. Run the bot to discover questions.</div>
-                    <div class="jobs-table-wrap" id="unknownTableWrap" style="display:none">
-                        <table>
-                            <thead><tr><th>#</th><th>Question</th><th>Options</th><th>Discovered</th><th>Status</th><th>Keyword</th><th>Your Answer</th></tr></thead>
-                            <tbody id="unknownQuestionsBody"></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="action-bar" id="unknownAnswerBar" style="display:none">
-                    <button class="btn btn-success" onclick="saveUnknownAnswers()">💾 Save Answers</button>
-                    <button class="btn btn-outline" onclick="loadUnknownQuestions()">🔄 Refresh</button>
-                </div>
-            </div>
-
             <div class="action-bar">
                 <button class="btn btn-primary" onclick="saveBotConfig()">Save Bot Config</button>
             </div>
-        </div>
+        </section>
 
-        <!-- TAB 4: Job History (applied / failed / skipped) -->
-        <div class="tab-panel" id="panel-history">
-            <div class="card">
-                <h2>Job History</h2>
-                <div class="form-group" style="margin-bottom:1rem">
-                    <label>Filter by Platform</label>
-                    <select id="historyPlatformFilter" onchange="loadJobs()" class="form-control" style="width: auto;">
-                        <option value="">All</option>
-                        <option value="LinkedIn">LinkedIn</option>
-                        <option value="Naukri">Naukri</option>
-                    </select>
-                    <span id="historyCounts" style="margin-left:1rem;color:#64748b;font-size:.9rem"></span>
-                </div>
+        </div><!-- /page-scroll -->
+    </main>
+</div>
 
-                <div class="form-group" style="margin-bottom:.5rem">
-                    <button class="btn btn-sm btn-primary" onclick="setHistoryView('applied')">Applied</button>
-                    <button class="btn btn-sm btn-outline" onclick="setHistoryView('failed')">Failed</button>
-                    <button class="btn btn-sm btn-outline" onclick="setHistoryView('skipped')">Skipped</button>
-                </div>
-
-                <div class="jobs-table-wrap" id="appliedTableWrap">
-                    <table>
-                        <thead><tr><th>#</th><th>Platform</th><th>Job Title</th><th>Company</th><th>Location</th><th>Job Link</th><th>Applied</th></tr></thead>
-                        <tbody id="jobsBody"></tbody>
-                    </table>
-                </div>
-                <div class="empty-state" id="jobsEmpty" style="display:none">No applications yet. Start the bot to begin applying!</div>
-
-                <div class="jobs-table-wrap" id="failedTableWrap" style="display:none">
-                    <table>
-                        <thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Reason it failed</th><th>Detail</th><th>Date</th><th>Job Link</th></tr></thead>
-                        <tbody id="failedJobsBody"></tbody>
-                    </table>
-                </div>
-                <div class="empty-state" id="failedJobsEmpty" style="display:none">No failed applications. 🎉</div>
-
-                <div class="jobs-table-wrap" id="skippedTableWrap" style="display:none">
-                    <table>
-                        <thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Experience</th><th>Reason skipped</th><th>Detail</th><th>Date</th></tr></thead>
-                        <tbody id="skippedJobsBody"></tbody>
-                    </table>
-                </div>
-                <div class="empty-state" id="skippedJobsEmpty" style="display:none">No skipped jobs recorded yet.</div>
-            </div>
-        </div>
+<!-- Job detail drawer -->
+<div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+<div class="drawer" id="jobDrawer">
+    <div class="drawer-head">
+        <h3 id="drawerTitle">Job</h3>
+        <button class="icon-btn" onclick="closeDrawer()">✕</button>
     </div>
+    <div class="drawer-body" id="drawerBody"></div>
+</div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="toast"></div>
+<div id="toast" class="toast"></div>
 
-    <script src="/static/js/dashboard.js"></script>
+<script src="/static/js/dashboard.js"></script>
 </body>
 </html>

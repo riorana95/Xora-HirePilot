@@ -726,6 +726,141 @@ def test_ascii_safe_logger() -> None:
         sys.stdout = real_stdout
 
 
+def test_ai_answers_log() -> None:
+    print("\n=== K. AI answers review log ===")
+    import tempfile
+    import json as _json
+    import modules.naukri.ai_answers_log as aal
+
+    tmpdir = tempfile.mkdtemp()
+    log_path = Path(tmpdir) / "ai.jsonl"
+    saved = aal.AI_ANSWERS_LOG
+    aal.AI_ANSWERS_LOG = log_path
+    try:
+        aal.record_ai_answer("Are you ok with 6-day weeks?", "Yes", ["Yes", "No"])
+        aal.record_ai_answer("Are you ok with 6-day weeks?", "Yes")  # repeat occurrence
+        aal.record_ai_answer("Willing to relocate?", "No")
+        aal.record_ai_answer("", "x")  # empty question ignored
+        aal.record_ai_answer("Q", "")  # empty answer ignored
+
+        answers = aal.get_ai_answers()
+        check("deduped to 2 questions", len(answers), 2)
+        by_q = {a["question"]: a for a in answers}
+        check("occurrences counted", by_q["Are you ok with 6-day weeks?"]["count"], 2)
+        check("defaults to pending feedback", by_q["Willing to relocate?"]["feedback"], "pending")
+
+        ok = aal.set_feedback("Willing to relocate?", "correct")
+        check("feedback write reports change", ok, True)
+        check("feedback persisted", aal.get_ai_answers() and {a["question"]: a for a in aal.get_ai_answers()}["Willing to relocate?"]["feedback"], "correct")
+
+        check("bad feedback value rejected", aal.set_feedback("Willing to relocate?", "maybe"), False)
+
+        aal.set_keyword("Willing to relocate?", "relocate")
+        kw = {a["question"]: a for a in aal.get_ai_answers()}["Willing to relocate?"]
+        check("keyword pair remembered", kw["keyword"], "relocate")
+
+        # decided feedback survives a new occurrence
+        aal.record_ai_answer("Willing to relocate?", "No")
+        kw = {a["question"]: a for a in aal.get_ai_answers()}["Willing to relocate?"]
+        check("decided feedback not reset by new occurrence", kw["feedback"], "correct")
+        check("count grew to 2", kw["count"], 2)
+    finally:
+        aal.AI_ANSWERS_LOG = saved
+
+    # seed_from_log_txt parses the Gemini ask/answer pairs from log.txt
+    log_txt = Path(tmpdir) / "log.txt"
+    log_txt.write_text(
+        "Navigating to search\n"
+        "Asking Gemini to answer Naukri question: No, I will not attend\n"
+        "Calling Gemini API (models/gemini-3.6-flash)...\n"
+        'Gemini answered: "Yes, I will attend"\n'
+        "Unrelated line\n"
+        "Asking Gemini to answer Naukri question: Are you a team player?\n"
+        'Gemini answered: "Yes"\n',
+        encoding="utf-8",
+    )
+    aal.AI_ANSWERS_LOG = log_path.parent / "ai2.jsonl"
+    try:
+        seeded = aal.seed_from_log_txt(log_txt)
+        check("seeded 2 questions from log.txt", seeded, 2)
+        seeded_answers = {a["question"]: a for a in aal.get_ai_answers()}
+        check("seeded answer text", seeded_answers.get("No, I will not attend", {}).get("answer"), "Yes, I will attend")
+        check("seed counts occurrences", seeded_answers.get("Are you a team player?", {}).get("count"), 1)
+
+        # second seed is a no-op (JSONL already has content)
+        check("re-seed skipped", aal.seed_from_log_txt(log_txt), 0)
+    finally:
+        aal.AI_ANSWERS_LOG = saved
+
+
+def test_unknown_questions_marking() -> None:
+    print("\n=== L. unknown-question answered marking (the 'still pending' fix) ===")
+    import json as _json
+    import app as flask_app
+
+    client = flask_app.app.test_client()
+
+    # Snapshot the real config/profile answer dicts so the test's POST restores
+    # them afterwards (it writes through to config/naukri_questions.py and the
+    # active profile file).
+    from modules.config_manager import _read_module_values
+    saved_answers = dict(_read_module_values("config.naukri_questions", ["custom_naukri_answers"]).get("custom_naukri_answers", {}))
+    saved_log = flask_app.UNKNOWN_QUESTIONS_LOG
+    import tempfile
+    tmpdir = tempfile.mkdtemp()
+    log_path = Path(tmpdir) / "uq.jsonl"
+    log_path.write_text(
+        _json.dumps({"question": "Do you have a laptop?", "options": ["yes", "no"], "time": "2026-11-08T09:00:00"}) + "\n"
+        + _json.dumps({"question": "Are you a night owl?", "options": [], "time": "2026-11-08T09:01:00"}) + "\n",
+        encoding="utf-8",
+    )
+    flask_app.UNKNOWN_QUESTIONS_LOG = log_path
+    try:
+        resp = client.post("/api/naukri/answer-questions", json={"answers": {"laptop": "yes"}})
+        body = resp.get_json()
+        check("save returns 200", resp.status_code, 200)
+        check("row marked answered", body.get("questions_marked_answered"), 1)
+
+        # GET now shows it as answered with the value
+        resp = client.get("/api/naukri/unknown-questions")
+        qs = {q["question"]: q for q in resp.get_json()["questions"]}
+        check("laptop question now answered", qs["Do you have a laptop?"]["status"], "answered")
+        check("saved answer visible", qs["Do you have a laptop?"]["existing_answer"], "yes")
+        check("other question still pending", qs["Are you a night owl?"]["status"], "new")
+    finally:
+        flask_app.UNKNOWN_QUESTIONS_LOG = saved_log
+        # Restore the real answer dicts (config file + module state).
+        from modules.config_manager import save_config as _save
+        _save({"naukri_questions": {"custom_naukri_answers": saved_answers}})
+        import config.naukri_questions as _nq
+        import importlib as _il
+        _il.reload(_nq)
+        try:
+            # update_profile deep-merges, which cannot REMOVE the test's key;
+            # write the profile file directly to restore the snapshot exactly.
+            import json as _j
+            from pathlib import Path as _P
+            from modules.profile_manager import _profile_path as _pp
+            _p = _pp("rahul")
+            if _p.exists():
+                _data = _j.loads(_p.read_text(encoding="utf-8"))
+                _data.setdefault("qa", {})["custom_naukri_answers"] = saved_answers
+                _p.write_text(_j.dumps(_data, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+
+def test_naukri_search_link() -> None:
+    print("\n=== M. expired-link fallback URL ===")
+    import app as flask_app
+
+    link = flask_app._naukri_search_link("Angular Developer")
+    check("spaces become dashes", link, "https://www.naukri.com/angular-developer-jobs")
+    link2 = flask_app._naukri_search_link("")
+    check("empty title still yields a search", link2.endswith("-jobs"), True)
+    check("url-encoded when needed", "%20" in flask_app._naukri_search_link("Dev (Remote)") or "(" not in flask_app._naukri_search_link("Dev (Remote)"), True)
+
+
 def main() -> None:
     test_pure_logic()
     test_end_to_end()
@@ -737,6 +872,9 @@ def main() -> None:
     test_skill_mismatch_filter()
     test_history_csvs()
     test_ascii_safe_logger()
+    test_ai_answers_log()
+    test_unknown_questions_marking()
+    test_naukri_search_link()
     failed = [r for r in RESULTS if not r[1]]
     print(f"\n{'='*60}\nTOTAL: {len(RESULTS)}  passed: {len(RESULTS)-len(failed)}  failed: {len(failed)}")
     if failed:

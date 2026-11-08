@@ -16,8 +16,16 @@ import pathlib
 from time import sleep
 from random import randint
 from datetime import datetime, timedelta
-from pyautogui import alert
 from pprint import pprint
+
+# pyautogui needs a display (X11/Windows desktop). Importing it eagerly broke
+# every headless use of this module — logging, the dashboard's API endpoints
+# and tests only need print_lg. Fall back to a no-op alert when unavailable.
+try:
+    from pyautogui import alert
+except Exception:  # ImportError on missing package or KeyError/DisplayError headless
+    def alert(*args, **kwargs):  # type: ignore[misc]
+        return False
 
 from config.settings import logs_folder_path
 

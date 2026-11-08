@@ -209,6 +209,14 @@ def api_bot_stop():
         return jsonify({"message": f"{stopped} bot stopped"})
 
 
+def _naukri_search_link(title: str) -> str:
+    '''Naukri search URL for a job title — used when the direct job link has
+    expired ("Job you are looking for is expired").'''
+    from urllib.parse import quote
+    clean = (title or "").strip() or "jobs"
+    return f"https://www.naukri.com/{quote(clean.replace(' ', '-').lower())}-jobs"
+
+
 @app.route("/applied-jobs", methods=["GET"])
 def get_applied_jobs():
     try:
@@ -229,6 +237,9 @@ def get_applied_jobs():
                     "Job_Link": row.get("Job Link", ""),
                     "External_Job_link": row.get("External Job link", ""),
                     "Date_Applied": row.get("Date Applied", "Pending"),
+                    # Naukri expires job pages after ~30 days; this fallback
+                    # URL finds similar live jobs when the direct link is dead.
+                    "Search_Link": _naukri_search_link(row.get("Title", "")),
                 })
         return jsonify(jobs)
     except FileNotFoundError:
@@ -330,6 +341,146 @@ SKIP_REASONS = {
     "Excluded title keyword", "Company blacklisted", "Avoided company",
     "Bad word in JD", "Security clearance required", "Skill mismatch",
 }
+
+
+ACTIVITY_LOG_PATH = PROJECT_ROOT / "logs" / "naukri_activity_log.jsonl"
+
+
+def _read_activity_log(limit=5000) -> list[dict]:
+    entries = []
+    if ACTIVITY_LOG_PATH.exists():
+        with open(ACTIVITY_LOG_PATH, "r", encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip().lstrip("\ufeff")
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    return entries[-limit:]
+
+
+@app.route("/api/jobs/timeline", methods=["GET"])
+def api_jobs_timeline():
+    '''Recent activity timeline: what the bot did, job by job, newest first.'''
+    try:
+        entries = _read_activity_log()
+        timeline = []
+        for e in entries:
+            action = e.get("action", "")
+            if action == "SEARCH":
+                continue
+            timeline.append({
+                "time": e.get("timestamp", ""),
+                "action": action,
+                "job_id": e.get("job_id", ""),
+                "title": e.get("title", ""),
+                "company": e.get("company", ""),
+                "location": e.get("location", ""),
+                "status": e.get("status", ""),
+                "error": e.get("error", ""),
+                "job_link": e.get("job_link", ""),
+                "search_term": e.get("search_term", ""),
+                "questions_answered": [
+                    {"q": qa.get("question", ""), "a": qa.get("answer", "")}
+                    for qa in (e.get("questions_answered") or [])
+                ],
+            })
+        timeline.reverse()
+        return jsonify({"events": timeline[:300]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/jobs/<path:job_id>/detail", methods=["GET"])
+def api_job_detail(job_id):
+    '''Full history of one job: every apply attempt, skip, failure and the
+    questions that were answered, from the activity log.'''
+    try:
+        entries = _read_activity_log(limit=20000)
+        events = []
+        for e in entries:
+            if e.get("job_id", "") != job_id:
+                continue
+            events.append({
+                "time": e.get("timestamp", ""),
+                "action": e.get("action", ""),
+                "status": e.get("status", ""),
+                "error": e.get("error", ""),
+                "resume_used": e.get("resume_used", ""),
+                "search_term": e.get("search_term", ""),
+                "search_location": e.get("search_location", ""),
+                "questions_answered": [
+                    {"q": qa.get("question", ""), "a": qa.get("answer", "")}
+                    for qa in (e.get("questions_answered") or [])
+                ],
+                "description_snippet": e.get("description_snippet", ""),
+            })
+        if not events:
+            return jsonify({"error": "No history found for this job"}), 404
+        return jsonify({"job_id": job_id, "events": events})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/stats", methods=["GET"])
+def api_stats():
+    '''Overview numbers for the dashboard header cards.'''
+    stats = {
+        "applied": 0, "failed": 0, "skipped": 0,
+        "applied_today": 0, "failed_today": 0, "skipped_today": 0,
+        "last_run": "", "ai_pending_review": 0, "unknown_questions": 0,
+    }
+    try:
+        with open(PATH / "all_applied_applications_history.csv", "r", encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.DictReader(f))
+        stats["applied"] = len(rows)
+        today = datetime.now().strftime("%Y-%m-%d")
+        stats["applied_today"] = sum(1 for r in rows if (r.get("Date Applied") or "").startswith(today))
+    except Exception:
+        pass
+    try:
+        with open(PATH / "all_failed_applications_history.csv", "r", encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.DictReader(f))
+        genuine = [r for r in rows if r.get("Assumed Reason") not in SKIP_REASONS and r.get("External Job link") != "Skipped"]
+        stats["failed"] = len(genuine)
+        today = datetime.now().strftime("%Y-%m-%d")
+        stats["failed_today"] = sum(1 for r in genuine if (r.get("Date Tried") or "").startswith(today))
+    except Exception:
+        pass
+    try:
+        with open(PATH / "all_skipped_jobs_history.csv", "r", encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.DictReader(f))
+        stats["skipped"] = len(rows)
+        today = datetime.now().strftime("%Y-%m-%d")
+        stats["skipped_today"] = sum(1 for r in rows if (r.get("Date Skipped") or "").startswith(today))
+    except Exception:
+        pass
+    try:
+        from modules.naukri import ai_answers_log
+        answers = ai_answers_log.get_ai_answers()
+        stats["ai_pending_review"] = sum(1 for a in answers if a["feedback"] == "pending")
+    except Exception:
+        pass
+    try:
+        if UNKNOWN_QUESTIONS_LOG.exists():
+            seen = set()
+            with open(UNKNOWN_QUESTIONS_LOG, "r", encoding="utf-8-sig") as f:
+                for line in f:
+                    line = line.strip().lstrip("\ufeff")
+                    if not line:
+                        continue
+                    try:
+                        e = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if e.get("status") != "answered":
+                        seen.add((e.get("question") or "").strip())
+            stats["unknown_questions"] = len(seen)
+    except Exception:
+        pass
+    return jsonify(stats)
 
 
 @app.route("/applied-jobs/<job_id>", methods=["PUT"])
@@ -474,9 +625,9 @@ def api_naukri_unknown_questions():
                         "question": q_text,
                         "options": entry.get("options", []),
                         "time": entry.get("time", ""),
-                        "existing_answer": existing_answer,
+                        "existing_answer": entry.get("answer", "") or existing_answer,
                         "matched_keyword": matched_keyword,
-                        "status": "answered" if existing_answer else "new",
+                        "status": "answered" if (entry.get("status") == "answered" or existing_answer) else "new",
                     })
 
         return jsonify({"questions": questions, "total": len(questions),
@@ -487,7 +638,13 @@ def api_naukri_unknown_questions():
 
 @app.route("/api/naukri/answer-questions", methods=["POST"])
 def api_naukri_answer_questions():
-    """Save user answers for unknown questions into custom_naukri_answers."""
+    """Save user answers for unknown questions.
+
+    The answer is written to the active profile AND the config file — the bot
+    start syncs the profile over the config files, so saving only to the config
+    meant your answers silently disappeared on the next run (the bug behind
+    "saved but still showing pending"). Each JSONL row is also marked answered,
+    which is what the Unknown Questions table reads."""
     try:
         data = request.get_json(silent=True) or {}
         new_answers = data.get("answers", {})
@@ -495,17 +652,152 @@ def api_naukri_answer_questions():
             return jsonify({"error": "No answers provided"}), 400
 
         # Load current custom answers
-        from modules.config_manager import _read_module_values
+        from modules.config_manager import _read_module_values, save_config
         current = _read_module_values("config.naukri_questions", ["custom_naukri_answers"])
         custom_answers = current.get("custom_naukri_answers", {})
 
         # Merge new answers
         custom_answers.update(new_answers)
 
-        # Save via config manager
+        # Save to config file (what the bot reads)
         save_config({"naukri_questions": {"custom_naukri_answers": custom_answers}})
 
-        return jsonify({"message": f"Saved {len(new_answers)} answer(s)", "total_answers": len(custom_answers)})
+        # Save to the active profile (what sync_active_profile restores from)
+        profile_saved = False
+        try:
+            from modules.profile_manager import get_active_profile, update_profile
+            active = get_active_profile()
+            if active:
+                qa = dict(active.get("qa", {}) or {})
+                profile_answers = dict(qa.get("custom_naukri_answers", {}) or {})
+                profile_answers.update(new_answers)
+                qa["custom_naukri_answers"] = profile_answers
+                update_profile(active.get("id"), {"qa": qa})
+                profile_saved = True
+        except Exception as profile_err:
+            print(f"Profile answer save warning: {profile_err}")
+
+        # Mark the saved questions as answered in the JSONL the UI reads
+        marked = 0
+        if UNKNOWN_QUESTIONS_LOG.exists():
+            rows = []
+            try:
+                with open(UNKNOWN_QUESTIONS_LOG, "r", encoding="utf-8-sig") as f:
+                    for line in f:
+                        line = line.strip().lstrip("\ufeff")
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        q = (entry.get("question") or "").strip()
+                        for keyword, ans in new_answers.items():
+                            if keyword.lower() in q.lower():
+                                entry["status"] = "answered"
+                                entry["answer"] = str(ans)
+                                marked += 1
+                                break
+                        rows.append(entry)
+                with open(UNKNOWN_QUESTIONS_LOG, "w", encoding="utf-8") as f:
+                    for entry in rows:
+                        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            except Exception as log_err:
+                print(f"Unknown-questions log update warning: {log_err}")
+
+        return jsonify({
+            "message": f"Saved {len(new_answers)} answer(s)",
+            "total_answers": len(custom_answers),
+            "profile_saved": profile_saved,
+            "questions_marked_answered": marked,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+AI_ANSWERS_SEEDED = False
+
+
+@app.route("/api/naukri/ai-answers", methods=["GET"])
+def api_naukri_ai_answers():
+    """AI-answered recruiter questions for review, with your feedback status."""
+    global AI_ANSWERS_SEEDED
+    try:
+        from modules.naukri import ai_answers_log
+        if not AI_ANSWERS_SEEDED:
+            # Backfill from logs/log.txt once, so the page opens with history.
+            seeded = ai_answers_log.seed_from_log_txt(PROJECT_ROOT / "logs" / "log.txt")
+            if seeded:
+                print(f"Seeded {seeded} AI-answered questions from log.txt")
+            AI_ANSWERS_SEEDED = True
+        entries = ai_answers_log.get_ai_answers()
+        counts = {
+            "pending": sum(1 for e in entries if e["feedback"] == "pending"),
+            "correct": sum(1 for e in entries if e["feedback"] == "correct"),
+            "wrong": sum(1 for e in entries if e["feedback"] == "wrong"),
+            "total": len(entries),
+        }
+        return jsonify({"answers": entries, "counts": counts})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/naukri/ai-answers/feedback", methods=["POST"])
+def api_naukri_ai_answers_feedback():
+    """Mark an AI answer correct or wrong."""
+    try:
+        data = request.get_json(silent=True) or {}
+        question = (data.get("question") or "").strip()
+        feedback = (data.get("feedback") or "").strip()
+        if not question or feedback not in ("correct", "wrong", "pending"):
+            return jsonify({"error": "question and feedback (correct|wrong|pending) required"}), 400
+        from modules.naukri import ai_answers_log
+        changed = ai_answers_log.set_feedback(question, feedback)
+        if not changed:
+            return jsonify({"error": "Question not found"}), 404
+        return jsonify({"message": f'Marked "{question[:50]}" as {feedback}'})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/naukri/ai-answers/teach", methods=["POST"])
+def api_naukri_ai_answers_teach():
+    """Teach a keyword:answer pair for a question the AI answered wrongly.
+
+    Writes the pair into custom_naukri_answers (profile + config), so the bot
+    answers this question itself from now on."""
+    try:
+        data = request.get_json(silent=True) or {}
+        question = (data.get("question") or "").strip()
+        keyword = (data.get("keyword") or "").strip()
+        answer = (data.get("answer") or "").strip()
+        if not question or not keyword or not answer:
+            return jsonify({"error": "question, keyword and answer are required"}), 400
+
+        from modules.config_manager import _read_module_values, save_config
+        current = _read_module_values("config.naukri_questions", ["custom_naukri_answers"])
+        custom_answers = current.get("custom_naukri_answers", {})
+        custom_answers[keyword] = answer
+        save_config({"naukri_questions": {"custom_naukri_answers": custom_answers}})
+
+        # Also into the active profile so sync_active_profile keeps it.
+        try:
+            from modules.profile_manager import get_active_profile, update_profile
+            active = get_active_profile()
+            if active:
+                qa = dict(active.get("qa", {}) or {})
+                profile_answers = dict(qa.get("custom_naukri_answers", {}) or {})
+                profile_answers[keyword] = answer
+                qa["custom_naukri_answers"] = profile_answers
+                update_profile(active.get("id"), {"qa": qa})
+        except Exception as profile_err:
+            print(f"Profile teach save warning: {profile_err}")
+
+        from modules.naukri import ai_answers_log
+        ai_answers_log.set_feedback(question, "wrong")
+        ai_answers_log.set_keyword(question, keyword)
+
+        return jsonify({"message": f'Taught "{keyword}" -> "{answer}"; bot will answer this itself from now on'})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

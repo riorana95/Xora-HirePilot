@@ -24,6 +24,7 @@ from config.settings import logs_folder_path
 from modules.helpers import buffer, print_lg
 from modules.naukri.dom_helpers import click_first, find_first
 from modules.naukri.forms import answer_for_label, _ai_answer
+from modules.naukri.ai_answers_log import record_ai_answer
 from modules.naukri import selectors as S
 
 UNKNOWN_LOG = Path(logs_folder_path) / "naukri_unknown_questions.jsonl"
@@ -46,6 +47,10 @@ def _norm_text(text: str) -> str:
 
 
 _last_unknown_logged: set = set()
+
+# True while resolving a question whose answer came from the AI (not from
+# config); the main loop records such answers into the AI-answers review log.
+_answer_was_ai = False
 
 
 def _log_unknown_question(question: str, options: list[str]) -> None:
@@ -100,6 +105,8 @@ def _ask_and_remember_answer(
             print_lg(f'AI answered and saved for future: "{question}" -> "{answer}"')
         except Exception as e:
             print_lg(f"Could not save AI answer: {e}")
+        global _answer_was_ai
+        _answer_was_ai = True
         return answer
     except Exception as e:
         print_lg(f"AI failed to answer question: {e}")
@@ -382,6 +389,8 @@ def _resolve_base_answer(
     question: str, work_location: str, use_ai: bool, ai_client, ai_provider: str,
     job_description: str, options: list[str] | None = None,
 ) -> str:
+    global _answer_was_ai
+    _answer_was_ai = False
     q_lower = question.lower()
 
     if "relocate" in q_lower or "relocation" in q_lower:
@@ -398,6 +407,7 @@ def _resolve_base_answer(
     if use_ai and ai_client:
         ai_ans = _ai_answer(ai_client, ai_provider, question, job_description, options=options)
         if ai_ans:
+            _answer_was_ai = True
             return ai_ans.lower() if ai_ans.lower() in ("yes", "no") else ai_ans
 
     # Yes/no question heuristic
@@ -672,6 +682,7 @@ def handle_recruiter_questionnaire(
     unknown: list[str] = []
     last_question = ""
     repeat_count = 0
+    global _answer_was_ai
 
     for step in range(MAX_STEPS):
         modal = _find_chat_modal(driver)
@@ -747,6 +758,12 @@ def handle_recruiter_questionnaire(
                 print_lg(f'No answer available for recruiter question: "{question}"')
                 unknown.append(question)
                 break
+
+        if _answer_was_ai and answer:
+            # Review log: every AI-sourced answer (matched onto its option)
+            # lands in the dashboard's AI Answers page for your feedback.
+            record_ai_answer(question, answer, options)
+            _answer_was_ai = False
 
         print_lg(f'Naukri Q [{control_type}]: "{question}" -> "{answer}"' + (f' | options: {options}' if options else ''))
 
