@@ -232,6 +232,8 @@ def validate_search_naukri() -> None | ValueError | TypeError:
     check_int(experience_max, "experience_max", -1)
     check_int(salary_min_lpa, "salary_min_lpa", 0)
     check_int(salary_max_lpa, "salary_max_lpa", 0)
+    check_int(failed_job_retry_limit, "failed_job_retry_limit", 0)
+    check_int(nonstop_cycle_gap_minutes, "nonstop_cycle_gap_minutes", 0)
     check_list(work_mode, "work_mode", ["Remote", "Hybrid", "Office"])
     check_int(job_age_days, "job_age_days", 0)
     check_boolean(apply_on_naukri_only, "apply_on_naukri_only")
@@ -244,6 +246,8 @@ def validate_search_naukri() -> None | ValueError | TypeError:
     check_boolean(security_clearance, "security_clearance")
     check_boolean(did_masters, "did_masters")
     check_int(current_experience, "current_experience", -1)
+    check_list(required_skills, "required_skills")
+    check_list(possessed_skills, "possessed_skills")
 
 
 from config.naukri_questions import *

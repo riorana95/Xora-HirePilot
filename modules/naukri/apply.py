@@ -38,6 +38,15 @@ class ApplyResult:
 
 
 def submit_application(driver: WebDriver, skip_alerts: bool) -> bool:
+    '''Submit the application. Clicks are scoped to the visible application
+    container: a page-wide "Apply"/"Save" would re-open the drawer or bookmark
+    the job after the chat flow has already submitted the application.'''
+    container = find_first(driver, S.FORM_CONTAINER, timeout=1)
+    if container is None:
+        # No standard form on this page (chat-only flow): the drawer's own
+        # Save/Continue buttons already submitted the application.
+        return not is_recruiter_modal_visible(driver)
+
     for _ in range(5):
         if pause_before_submit and not skip_alerts and not is_headless():
             try:
@@ -45,10 +54,10 @@ def submit_application(driver: WebDriver, skip_alerts: bool) -> bool:
                 pyautogui.alert("Review the Naukri application form, then click OK to submit.", "Pause Before Submit", "OK")
             except Exception:
                 pass
-        if click_first(driver, S.FORM_SUBMIT, timeout=3):
+        if click_first(driver, S.FORM_SUBMIT, timeout=3, parent=container):
             buffer(2)
             return True
-        if click_first(driver, S.FORM_NEXT, timeout=2):
+        if click_first(driver, S.FORM_NEXT, timeout=2, parent=container):
             buffer(2)
             continue
         break
@@ -129,6 +138,18 @@ def apply_from_detail_page(
             return ApplyResult(False, "naukri", error="Unanswered recruiter question", questions=all_questions, unknown_questions=unknown_questions)
 
     submitted = submit_application(driver, skip_alerts)
+
+    # A drawer can still appear after the form submit (more recruiter
+    # questions): answer it instead of failing the whole application.
+    if is_recruiter_modal_visible(driver):
+        chat_answered, unknown = handle_recruiter_questionnaire(
+            driver, work_location, job_description,
+            ai_client=ai_client, ai_provider=ai_provider, use_ai=use_ai, skip_alerts=skip_alerts,
+        )
+        all_questions.update(chat_answered)
+        unknown_questions.extend(unknown)
+        submitted = submitted and not unknown
+
     if submitted or not is_recruiter_modal_visible(driver):
         return ApplyResult(
             True, "naukri", application_link="Applied on Naukri",

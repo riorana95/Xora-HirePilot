@@ -1,10 +1,15 @@
 {
-  "active": "default",
+  "active": "rahul",
   "profiles": [
     {
       "id": "default",
       "name": "Default",
       "created": ""
+    },
+    {
+      "id": "rahul",
+      "name": "Rahul",
+      "created": "2026-10-02T11:48:04.995150"
     }
   ]
 }

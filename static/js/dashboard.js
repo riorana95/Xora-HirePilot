@@ -26,6 +26,7 @@ const naukriTagFields = {
     posted_by: 'naukri_posted_by_tags',
     industries: 'naukri_industries_tags',
     top_companies: 'naukri_top_companies_tags',
+    avoid_companies: 'naukri_avoid_companies_tags',
 };
 
 const boolFields = new Set([
@@ -59,7 +60,7 @@ const sectionFields = {
         'work_mode', 'job_age_days', 'apply_on_naukri_only', 'pause_after_filters', 'run_non_stop',
         'freshness', 'filter_locations', 'departments', 'salary_ranges', 'company_types', 'role_categories',
         'educations', 'posted_by', 'industries', 'top_companies',
-        'about_company_bad_words', 'bad_title_words', 'bad_words', 'security_clearance', 'did_masters', 'current_experience',
+        'about_company_bad_words', 'bad_title_words', 'bad_words', 'avoid_companies', 'security_clearance', 'did_masters', 'current_experience',
     ],
     settings: [
         'close_tabs', 'follow_companies', 'run_non_stop', 'alternate_sortby',
@@ -176,27 +177,32 @@ function naukriDomId(field) {
 function setFieldValue(id, value) {
     const el = document.getElementById(id);
     if (!el) return;
-    
+
     if (el.tagName === 'SELECT') {
         el.value = typeof value === 'boolean' ? String(value) : value;
     } else if (el.type === 'checkbox') {
         el.checked = !!value;
     } else if (el.type !== 'password') {
-        el.value = value || '';
+        // `value || ''` would turn a legitimate 0 into an empty box, which
+        // then saved back as 0 for unrelated numeric fields.
+        el.value = (value === null || value === undefined) ? '' : String(value);
     }
 }
 
 function getFieldValue(id) {
     const el = document.getElementById(id);
     if (!el) return '';
-    
+
     if (el.tagName === 'SELECT') {
         if (el.value === 'true') return true;
         if (el.value === 'false') return false;
         return el.value;
     }
     if (el.type === 'checkbox') return el.checked;
-    return el.type === 'number' ? (el.value ? Number(el.value) : 0) : el.value;
+    // An empty number box returns null so collectSection() can leave the
+    // existing config value untouched instead of writing 0.
+    if (el.type === 'number') return el.value === '' ? null : Number(el.value);
+    return el.value;
 }
 
 async function loadProfiles() {
@@ -424,6 +430,8 @@ function collectSection(section) {
         
         if (f === 'llm_api_key' && !val) {
             // retain existing key if left blank
+        } else if (val === null || val === undefined) {
+            // blank numeric field: keep the existing config value
         } else {
             data[f] = val;
         }
@@ -531,13 +539,13 @@ async function updateBotStatus() {
     try {
         const response = await fetch('/api/bot/status');
         const data = await response.json();
-        
+
         const dot = document.getElementById('statusDot');
         const text = document.getElementById('statusText');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const platformSelect = document.getElementById('platformSelect');
-        
+
         if (data.running) {
             dot.className = 'status-dot running';
             text.textContent = `Running (${data.platform})`;
@@ -552,6 +560,7 @@ async function updateBotStatus() {
             stopBtn.disabled = true;
             platformSelect.disabled = false;
         }
+        loadBotLogs();
     } catch (error) {
         console.error('Error fetching bot status:', error);
     }
@@ -559,22 +568,43 @@ async function updateBotStatus() {
 
 async function startBot() {
     const platform = document.getElementById('platformSelect').value;
+    const startBtn = document.getElementById('startBtn');
     try {
+        if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Starting...'; }
+
+        // Preflight: config/import errors surface here instead of a silent no-op.
+        try {
+            const pre = await fetch('/api/bot/preflight', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ platform })
+            });
+            const preData = await pre.json();
+            if (!preData.ok) {
+                showToast('Bot config check failed - see console output', 'error');
+                await updateBotStatus(); // refresh console lines with the preflight output
+                return;
+            }
+        } catch (e) { /* preflight is best-effort; continue to start */ }
+
         const response = await fetch('/api/bot/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ platform })
         });
-        
+
         if (response.ok) {
             showToast(`Started ${platform} bot`);
             updateBotStatus();
         } else {
             const data = await response.json();
             showToast(data.error || 'Failed to start bot', 'error');
+            await updateBotStatus();
         }
     } catch (error) {
         showToast('Error starting bot', 'error');
+    } finally {
+        if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Start Bot'; }
     }
 }
 
@@ -596,45 +626,134 @@ async function loadJobs() {
     try {
         const response = await fetch('/applied-jobs');
         const jobs = await response.json();
-        
+        if (!Array.isArray(jobs)) throw new Error(jobs.error || 'failed to load');
         const platformFilter = document.getElementById('historyPlatformFilter').value;
         const tbody = document.getElementById('jobsBody');
         const emptyState = document.getElementById('jobsEmpty');
-        
+
         let filteredJobs = jobs;
         if (platformFilter) {
-            filteredJobs = jobs.filter(j => (j.platform || 'LinkedIn').toLowerCase() === platformFilter.toLowerCase());
+            filteredJobs = jobs.filter(j => (j.Platform || 'LinkedIn').toLowerCase() === platformFilter.toLowerCase());
         }
-        
+
         if (filteredJobs.length === 0) {
             tbody.innerHTML = '';
             emptyState.style.display = 'block';
-            return;
+        } else {
+            emptyState.style.display = 'none';
+            filteredJobs.reverse(); // newest first
+            tbody.innerHTML = filteredJobs.map((job, index) => createJobRow(job, index)).join('');
         }
-        
-        emptyState.style.display = 'none';
-        
-        tbody.innerHTML = filteredJobs.map((job, index) => createJobRow(job, index)).join('');
+        loadHistoryCounts();
     } catch (error) {
         console.error('Error loading jobs:', error);
     }
 }
 
 function createJobRow(job, index) {
-    const date = new Date(job.timestamp).toLocaleString();
-    const plat = job.platform || 'LinkedIn';
+    const date = (job.Date_Applied && job.Date_Applied !== 'Pending') ? job.Date_Applied : '-';
+    const plat = job.Platform || 'LinkedIn';
     const platClass = plat.toLowerCase() === 'naukri' ? 'plat-naukri' : 'plat-linkedin';
+    const link = job.Job_Link ? `<a href="${escapeHtml(job.Job_Link)}" target="_blank" class="btn btn-outline btn-sm">View</a>` : '-';
     return `
         <tr>
             <td>${index + 1}</td>
             <td><span class="platform-badge ${platClass}">${plat}</span></td>
-            <td><strong>${escapeHtml(job.job_title)}</strong></td>
-            <td>${escapeHtml(job.company_name)}</td>
-            <td>${job.hr_name ? escapeHtml(job.hr_name) : '-'}</td>
-            <td><a href="${escapeHtml(job.job_url)}" target="_blank" class="btn btn-outline btn-sm">View Job</a></td>
-            <td>${date}</td>
+            <td><strong>${escapeHtml(job.Title || '')}</strong></td>
+            <td>${escapeHtml(job.Company || '')}</td>
+            <td>${escapeHtml(job.Location || '-')}</td>
+            <td>${link}</td>
+            <td>${escapeHtml(date)}</td>
         </tr>
     `;
+}
+
+let historyView = 'applied';
+
+function setHistoryView(view) {
+    historyView = view;
+    document.getElementById('appliedTableWrap').style.display = view === 'applied' ? '' : 'none';
+    document.getElementById('failedTableWrap').style.display = view === 'failed' ? '' : 'none';
+    document.getElementById('skippedTableWrap').style.display = view === 'skipped' ? '' : 'none';
+    document.querySelectorAll('#panel-history .empty-state').forEach(el => el.style.display = 'none');
+    loadHistory();
+}
+
+async function loadHistory() {
+    if (historyView === 'applied') { await loadJobs(); return; }
+    if (historyView === 'failed') { await loadFailedJobs(); return; }
+    await loadSkippedJobs();
+}
+
+async function loadFailedJobs() {
+    try {
+        const response = await fetch('/api/jobs/failed');
+        const jobs = await response.json();
+        const platformFilter = document.getElementById('historyPlatformFilter').value;
+        const filtered = platformFilter ? jobs.filter(j => (j.Platform || '').toLowerCase() === platformFilter.toLowerCase()) : jobs;
+        const tbody = document.getElementById('failedJobsBody');
+        const emptyState = document.getElementById('failedJobsEmpty');
+        if (!Array.isArray(filtered) || filtered.length === 0) {
+            tbody.innerHTML = '';
+            emptyState.style.display = 'block';
+            return;
+        }
+        emptyState.style.display = 'none';
+        tbody.innerHTML = filtered.map((job, index) => `
+            <tr>
+                <td>${index + 1}</td>
+                <td><strong>${escapeHtml(job.Title || '')}</strong></td>
+                <td>${escapeHtml(job.Company || '')}</td>
+                <td>${escapeHtml(job.Reason || '')}</td>
+                <td style="max-width:260px;word-wrap:break-word;">${escapeHtml((job.Detail || '').slice(0, 160))}</td>
+                <td>${escapeHtml(job.Date_Tried || '-')}</td>
+                <td>${job.Job_Link ? `<a href="${escapeHtml(job.Job_Link)}" target="_blank" class="btn btn-outline btn-sm">View</a>` : '-'}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading failed jobs:', error);
+    }
+}
+
+async function loadSkippedJobs() {
+    try {
+        const response = await fetch('/api/jobs/skipped');
+        const jobs = await response.json();
+        const platformFilter = document.getElementById('historyPlatformFilter').value;
+        const filtered = platformFilter ? jobs.filter(j => (j.Platform || '').toLowerCase() === platformFilter.toLowerCase()) : jobs;
+        const tbody = document.getElementById('skippedJobsBody');
+        const emptyState = document.getElementById('skippedJobsEmpty');
+        if (!Array.isArray(filtered) || filtered.length === 0) {
+            tbody.innerHTML = '';
+            emptyState.style.display = 'block';
+            return;
+        }
+        emptyState.style.display = 'none';
+        tbody.innerHTML = filtered.map((job, index) => `
+            <tr>
+                <td>${index + 1}</td>
+                <td><strong>${escapeHtml(job.Title || '')}</strong></td>
+                <td>${escapeHtml(job.Company || '')}</td>
+                <td>${escapeHtml(job.Experience || '-')}</td>
+                <td>${escapeHtml(job.Reason || '')}</td>
+                <td style="max-width:260px;word-wrap:break-word;">${escapeHtml((job.Detail || '').slice(0, 160))}</td>
+                <td>${escapeHtml(job.Date_Skipped || '-')}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading skipped jobs:', error);
+    }
+}
+
+async function loadHistoryCounts() {
+    try {
+        const res = await fetch('/api/jobs/summary');
+        const counts = await res.json();
+        document.getElementById('historyCounts').textContent =
+            `applied: ${counts.applied} | failed: ${counts.failed} | skipped: ${counts.skipped}`;
+    } catch (error) {
+        console.error('Error loading history counts:', error);
+    }
 }
 
 async function loadUnknownQuestions() {
@@ -728,3 +847,60 @@ document.addEventListener('DOMContentLoaded', () => {
     updateBotStatus();
     setInterval(updateBotStatus, 5000);
 });
+
+/* ───── Bot Console ───── */
+let consoleVisible = true;
+let consoleInterval = null;
+
+function toggleConsole() {
+    consoleVisible = !consoleVisible;
+    const output = document.getElementById('consoleOutput');
+    output.style.display = consoleVisible ? 'block' : 'none';
+    document.querySelector('.bot-console .btn-outline:last-child').textContent = consoleVisible ? '▼' : '▲';
+}
+
+async function loadBotLogs() {
+    try {
+        const res = await fetch('/api/bot/logs');
+        const data = await res.json();
+        const output = document.getElementById('consoleOutput');
+        const status = document.getElementById('consoleStatus');
+        
+        if (data.lines.length > 0) {
+            // Color error lines red
+            const html = data.lines.map(line => {
+                if (/error|exception|traceback|failed/i.test(line)) {
+                    return `<span class="console-error">${escapeHtml(line)}</span>`;
+                }
+                if (/warning/i.test(line)) {
+                    return `<span class="console-warn">${escapeHtml(line)}</span>`;
+                }
+                if (/applied|success|saved/i.test(line)) {
+                    return `<span class="console-success">${escapeHtml(line)}</span>`;
+                }
+                return escapeHtml(line);
+            }).join('\n');
+            output.innerHTML = html;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        if (data.running) {
+            status.textContent = '● Running';
+            status.className = 'console-status running';
+        } else if (data.exit_code !== null) {
+            status.textContent = data.exit_code === 0 ? '● Stopped' : `● Error (exit ${data.exit_code})`;
+            status.className = data.exit_code === 0 ? 'console-status stopped' : 'console-status error';
+        } else {
+            status.textContent = '○ Idle';
+            status.className = 'console-status';
+        }
+    } catch (_) {}
+}
+
+async function clearBotLogs() {
+    await fetch('/api/bot/logs/clear', { method: 'POST' });
+    document.getElementById('consoleOutput').innerHTML = 'Logs cleared.';
+}
+
+// Poll logs every 2 seconds
+setInterval(loadBotLogs, 2000);

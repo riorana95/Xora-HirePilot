@@ -30,10 +30,12 @@ CONFIG_SECTIONS = {
             "search_terms", "search_locations", "randomize_search_order", "max_applications_per_search",
             "experience_min", "experience_max", "salary_min_lpa", "salary_max_lpa",
             "work_mode", "job_age_days", "apply_on_naukri_only", "pause_after_filters", "run_non_stop",
+            "failed_job_retry_limit", "nonstop_cycle_gap_minutes",
             "freshness", "filter_locations", "departments", "salary_ranges", "company_types",
             "role_categories", "educations", "posted_by", "industries", "top_companies",
             "about_company_bad_words", "about_company_good_words", "bad_title_words", "bad_words",
-            "security_clearance", "did_masters", "current_experience",
+            "avoid_companies", "security_clearance", "did_masters", "current_experience",
+            "required_skills", "possessed_skills",
         ],
     },
     "naukri_questions": {
@@ -79,16 +81,28 @@ CONFIG_SECTIONS = {
         "fields": [
             "default_resume_path", "years_of_experience", "require_visa", "website", "linkedIn",
             "us_citizenship", "desired_salary", "current_ctc", "notice_period",
-            "linkedin_headline", "linkedin_summary", "cover_letter",
+            "linkedin_headline", "linkedin_summary", "cover_letter", "user_information_all",
             "recent_employer", "confidence_level",
             "pause_before_submit", "pause_at_failed_question", "overwrite_previous_answers",
         ],
-        "multiline": ["linkedin_summary", "cover_letter"],
+        "multiline": ["linkedin_summary", "cover_letter", "user_information_all"],
     },
 }
 
 BOOL_FIELDS = {
     "search", "search_naukri", "settings", "questions", "secrets", "naukri_questions",
+}
+
+# Fields that must stay numeric in the config files. A dashboard save that
+# sends an empty string or None for one of these must never be written as-is
+# (an empty number box used to become 0 and silently mass-skip jobs).
+NUMERIC_FIELDS = {
+    "switch_number", "current_experience",
+    "max_applications_per_search", "experience_min", "experience_max",
+    "salary_min_lpa", "salary_max_lpa", "job_age_days",
+    "failed_job_retry_limit", "nonstop_cycle_gap_minutes",
+    "click_gap",
+    "desired_salary", "current_ctc", "notice_period",
 }
 
 SECTION_BOOL_FIELDS = {
@@ -125,11 +139,36 @@ def _coerce_bool(value: Any) -> bool | Any:
     return value
 
 
+def _coerce_numeric(value: Any) -> int | float | None:
+    '''Best-effort conversion to a number; None when the value cannot be one.'''
+    if isinstance(value, bool):  # bool is an int subclass but never a valid count here
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            number = float(text)
+        except ValueError:
+            return None
+        return int(number) if number.is_integer() else number
+    return None
+
+
 def _normalize_updates(section_name: str, updates: dict[str, Any]) -> dict[str, Any]:
     bool_keys = SECTION_BOOL_FIELDS.get(section_name, set())
     normalized = {}
     for key, value in updates.items():
-        if key in bool_keys:
+        if value is None:
+            continue  # never overwrite a config value with null
+        if key in NUMERIC_FIELDS:
+            number = _coerce_numeric(value)
+            if number is None:
+                continue  # empty/garbage numeric field: keep the existing config value
+            normalized[key] = number
+        elif key in bool_keys:
             normalized[key] = _coerce_bool(value)
         else:
             normalized[key] = value
@@ -158,6 +197,48 @@ FILTER_OPTIONS = {
         "Canadian Citizen/Permanent Resident", "Other",
     ],
     "ai_provider": ["openai", "deepseek", "gemini"],
+    "naukri_locations": [
+        "Bengaluru", "Mumbai", "Delhi / NCR", "Hyderabad", "Chennai", "Pune",
+        "Kolkata", "Ahmedabad", "Noida", "Gurgaon", "Jaipur", "Lucknow",
+        "Chandigarh", "Indore", "Coimbatore", "Kochi", "Thiruvananthapuram",
+        "Visakhapatnam", "Nagpur", "Bhopal", "Mysuru",
+    ],
+    "naukri_departments": [
+        "Engineering - Software & QA", "IT & Information Security",
+        "Data Science & Analytics", "BFSI, Investments & Trading",
+        "Project & Program Management", "Consulting",
+        "UX, Design & Architecture", "Human Resources",
+        "Sales & Business Development", "Marketing & Communication",
+        "Customer Success, Service & Operations", "Finance & Accounting",
+        "Teaching & Training", "Research & Development",
+    ],
+    "naukri_company_types": [
+        "Corporate", "Startup", "Indian MNC", "Foreign MNC", "Government / PSU",
+    ],
+    "naukri_role_categories": [
+        "Software Development", "Quality Assurance and Testing",
+        "Data Science & Machine Learning", "DevOps & Cloud",
+        "DBA / Data Warehousing", "IT Security",
+        "System & Network Administration", "Project Management",
+        "Product Management", "UX / UI Design", "IT Consulting", "Technical Support",
+    ],
+    "naukri_educations": [
+        "B.Tech/B.E.", "B.Sc", "BCA", "M.Tech/M.E.", "M.Sc",
+        "MCA", "MBA/PGDM", "B.Com", "M.Com", "Diploma",
+        "Ph.D/Doctorate", "Any Graduate", "Any Postgraduate",
+    ],
+    "naukri_posted_by": ["Company", "Consultant"],
+    "naukri_industries": [
+        "IT Services & Consulting", "Software Product", "Internet",
+        "Financial Services", "Banking", "Insurance",
+        "BPO / Call Centre", "Analytics / KPO / Research",
+        "Emerging Technologies", "Engineering & Construction",
+        "Education / Training", "Healthcare", "Retail",
+        "Manufacturing", "Media & Entertainment", "Telecom / ISP",
+    ],
+    "naukri_freshness": [
+        "", "Last 1 day", "Last 3 days", "Last 7 days", "Last 15 days", "Last 30 days",
+    ],
 }
 
 
@@ -299,7 +380,7 @@ def sync_active_profile() -> bool:
             'password': creds.get('linkedin_password', '') or creds.get('naukri_password', ''),
         },
         'questions': {
-            'years_of_experience': prof.get('years_of_experience', ''),
+            'years_of_experience': str(prof.get('years_of_experience', '') or ''),
             'current_ctc': prof.get('current_ctc', 0),
             'desired_salary': prof.get('desired_salary', 0),
             'notice_period': prof.get('notice_period', 0),
@@ -311,7 +392,7 @@ def sync_active_profile() -> bool:
             'linkedin_summary': prof.get('linkedin_summary', ''),
             'cover_letter': prof.get('cover_letter', ''),
             'user_information_all': prof.get('user_information_all', ''),
-            'confidence_level': prof.get('confidence_level', '8'),
+            'confidence_level': str(prof.get('confidence_level', '8') or '8'),
             'require_visa': qa.get('require_visa', 'No'),
             'us_citizenship': qa.get('us_citizenship', ''),
             'pause_before_submit': qa.get('pause_before_submit', False),

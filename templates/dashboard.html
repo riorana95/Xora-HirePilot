@@ -30,6 +30,16 @@
         </div>
     </header>
 
+    <div class="bot-console" id="botConsole">
+        <div class="console-header">
+            <span class="console-title">🖥️ Bot Console</span>
+            <span class="console-status" id="consoleStatus">Idle</span>
+            <button class="btn btn-sm btn-outline" onclick="clearBotLogs()">Clear</button>
+            <button class="btn btn-sm btn-outline" onclick="toggleConsole()">▼</button>
+        </div>
+        <pre class="console-output" id="consoleOutput">Waiting for bot to start...</pre>
+    </div>
+
     <div class="container">
         <nav class="tabs">
             <button class="tab-btn active" data-tab="profiles">Profiles</button>
@@ -320,6 +330,7 @@
                         <div class="form-group full-width"><label>Bad Title Words</label><div id="naukri_bad_title_tags" class="tag-input-container"></div></div>
                         <div class="form-group full-width"><label>Bad Company Words</label><div id="naukri_bad_company_tags" class="tag-input-container"></div></div>
                         <div class="form-group full-width"><label>Bad Words</label><div id="naukri_bad_words_tags" class="tag-input-container"></div></div>
+                        <div class="form-group full-width"><label>Avoid Companies (skip all jobs from these)</label><div id="naukri_avoid_companies_tags" class="tag-input-container"></div><span class="help-text">Add company names to completely avoid. Any job from these companies will be skipped.</span></div>
                     </div>
                 </div>
                 <div class="action-bar">
@@ -465,10 +476,10 @@
             </div>
         </div>
 
-        <!-- TAB 4: Applied Jobs -->
+        <!-- TAB 4: Job History (applied / failed / skipped) -->
         <div class="tab-panel" id="panel-history">
             <div class="card">
-                <h2>Applied Jobs History</h2>
+                <h2>Job History</h2>
                 <div class="form-group" style="margin-bottom:1rem">
                     <label>Filter by Platform</label>
                     <select id="historyPlatformFilter" onchange="loadJobs()" class="form-control" style="width: auto;">
@@ -476,14 +487,38 @@
                         <option value="LinkedIn">LinkedIn</option>
                         <option value="Naukri">Naukri</option>
                     </select>
+                    <span id="historyCounts" style="margin-left:1rem;color:#64748b;font-size:.9rem"></span>
                 </div>
-                <div class="jobs-table-wrap">
+
+                <div class="form-group" style="margin-bottom:.5rem">
+                    <button class="btn btn-sm btn-primary" onclick="setHistoryView('applied')">Applied</button>
+                    <button class="btn btn-sm btn-outline" onclick="setHistoryView('failed')">Failed</button>
+                    <button class="btn btn-sm btn-outline" onclick="setHistoryView('skipped')">Skipped</button>
+                </div>
+
+                <div class="jobs-table-wrap" id="appliedTableWrap">
                     <table>
-                        <thead><tr><th>#</th><th>Platform</th><th>Job Title</th><th>Company</th><th>HR Contact</th><th>External Link</th><th>Applied</th></tr></thead>
+                        <thead><tr><th>#</th><th>Platform</th><th>Job Title</th><th>Company</th><th>Location</th><th>Job Link</th><th>Applied</th></tr></thead>
                         <tbody id="jobsBody"></tbody>
                     </table>
                 </div>
                 <div class="empty-state" id="jobsEmpty" style="display:none">No applications yet. Start the bot to begin applying!</div>
+
+                <div class="jobs-table-wrap" id="failedTableWrap" style="display:none">
+                    <table>
+                        <thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Reason it failed</th><th>Detail</th><th>Date</th><th>Job Link</th></tr></thead>
+                        <tbody id="failedJobsBody"></tbody>
+                    </table>
+                </div>
+                <div class="empty-state" id="failedJobsEmpty" style="display:none">No failed applications. 🎉</div>
+
+                <div class="jobs-table-wrap" id="skippedTableWrap" style="display:none">
+                    <table>
+                        <thead><tr><th>#</th><th>Job Title</th><th>Company</th><th>Experience</th><th>Reason skipped</th><th>Detail</th><th>Date</th></tr></thead>
+                        <tbody id="skippedJobsBody"></tbody>
+                    </table>
+                </div>
+                <div class="empty-state" id="skippedJobsEmpty" style="display:none">No skipped jobs recorded yet.</div>
             </div>
         </div>
     </div>

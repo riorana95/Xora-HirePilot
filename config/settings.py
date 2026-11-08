@@ -53,6 +53,7 @@ generated_resume_path = "all resumes/" # (In Development)
 # Directory and name of the files where history of applied jobs is saved (Sentence after the last "/" will be considered as the file name).
 file_name = "all excels/all_applied_applications_history.csv"
 failed_file_name = "all excels/all_failed_applications_history.csv"
+skipped_file_name = "all excels/all_skipped_jobs_history.csv"
 logs_folder_path = "logs/"
 
 # Set the maximum amount of time allowed to wait between each click in secs
@@ -77,7 +78,7 @@ keep_screen_awake = False
 stealth_mode = False
 
 # Do you want to get alerts on errors related to AI API connection?
-showAiErrorAlerts = False            # True or False, Note: True or False are case-sensitive
+showAiErrorAlerts = False
 
 # Use ChatGPT for resume building (Experimental Feature can break the application. Recommended to leave it as False) 
 # use_resume_generator = False       # True or False, Note: True or False are case-sensitive ,   This feature may only work with 'stealth_mode = True'. As ChatGPT website is hosted by CloudFlare which is protected by Anti-bot protections!

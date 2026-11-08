@@ -7,7 +7,8 @@ Skip-rule checks for Naukri jobs.
 import re
 
 from config.search_naukri import (
-    about_company_bad_words, about_company_good_words, bad_title_words, bad_words,
+    about_company_bad_words, about_company_good_words, avoid_companies,
+    bad_title_words, bad_words, required_skills, possessed_skills,
     current_experience, did_masters, experience_max, experience_min, security_clearance,
 )
 
@@ -39,6 +40,22 @@ def extract_min_experience(text: str) -> int | str:
     return "Unknown"
 
 
+def find_missing_skills(description: str) -> list[str]:
+    '''Skills the JD explicitly requires but you have not marked as possessed.
+
+    Only checked when required_skills is non-empty. A JD must mention at least
+    two of the watched skills before it counts as skill-focused, so a single
+    incidental mention never rejects a job.'''
+    if not required_skills:
+        return []
+    text = (description or "").lower()
+    mentioned = [skill for skill in required_skills if skill.lower() in text]
+    if len(mentioned) < 2:
+        return []
+    possessed = {s.lower() for s in possessed_skills}
+    return [skill for skill in mentioned if skill.lower() not in possessed]
+
+
 def should_skip_job(
     company: str,
     description: str,
@@ -50,6 +67,12 @@ def should_skip_job(
     desc_lower = description.lower()
     title_lower = title.lower()
 
+    # Check avoid_companies list first (exact company name match, case-insensitive)
+    for avoided in avoid_companies:
+        if avoided.lower() in company_lower:
+            blacklisted_companies.add(company)
+            return True, "Avoided company", f'Company "{company}" is in the avoid list'
+
     for bad in bad_title_words:
         if bad.lower() in title_lower:
             return True, "Excluded title keyword", f'Excluded title keyword "{bad}" in "{title}"'
@@ -59,9 +82,14 @@ def should_skip_job(
     # range from the job card before the bot opens or applies to a listing.
     if isinstance(exp_required, int):
         if experience_max >= 0 and exp_required > experience_max:
-            return True, "Experience exceeds maximum", f"Requires {experience_text}; maximum is {experience_max} years"
+            return True, "Experience exceeds maximum", (
+                f"Job asks {experience_text or 'for ' + str(exp_required) + ' years'}; "
+                f"your maximum is {experience_max} years")
+
         if experience_min >= 0 and exp_upper is not None and exp_upper < experience_min:
-            return True, "Experience below minimum", f"Requires {experience_text}; minimum is {experience_min} years"
+            return True, "Experience below minimum", (
+                f"Job asks {experience_text or 'up to ' + str(exp_upper) + ' years'}; "
+                f"your minimum is {experience_min} years")
 
     for bad in about_company_bad_words:
         if bad.lower() in company_lower:
@@ -83,6 +111,16 @@ def should_skip_job(
 
     if current_experience > -1 and isinstance(exp_required, int):
         if exp_required > current_experience + found_masters:
-            return True, "Experience too high", f"Required {exp_required} > current {current_experience + found_masters}"
+            return True, "Experience too high", (
+                f"Job requires {exp_required} years; you have {current_experience}"
+                + (" (+2 for masters)" if found_masters else ""))
+
+    # Skill match: reject only when the JD clearly centers on skills you have
+    # not marked as possessed (see find_missing_skills).
+    if description:
+        missing = find_missing_skills(description)
+        if missing:
+            return True, "Skill mismatch", (
+                "JD requires skills not in your possessed list: " + ", ".join(missing))
 
     return False, "", ""

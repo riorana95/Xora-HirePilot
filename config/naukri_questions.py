@@ -15,31 +15,4 @@ pause_at_unknown_naukri_question = False
 
 # Custom answers: key is matched as substring in question text (case-insensitive), value is the answer to select/type
 # Example from screenshot: "Are you willing to relocate to Hyderabad?" → matches "relocate" or "hyderabad"
-custom_naukri_answers = {'bangalore': 'yes',
- 'bengaluru': 'yes',
- 'chennai': 'yes',
- 'current ctc': '13',
- 'delhi': 'yes',
- 'expected ctc': '17',
- 'expected salary': '17',
- 'hyderabad': 'yes',
- 'immediate joiner': 'yes',
- 'join immediately': 'yes',
- 'linkedin': 'https://www.linkedin.com/in/riorana95/',
- 'microService': 'Yes',
- 'mumbai': 'yes',
- 'nShift': 'yes',
- 'ncr': 'yes',
- 'nightShift': 'yes',
- 'notice period': '30',
- 'portfolio': '',
- 'pune': 'yes',
- 'relocate': 'yes',
- 'relocation': 'yes',
- 'serving notice': 'no',
- 'sponsorship': 'no',
- 'total experience': '4',
- 'travel': 'yes',
- 'visa': 'no',
- 'willing to travel': 'yes',
- 'years of experience': '4'}
+custom_naukri_answers = {'noticPeriod': '90 days', 'nightShift': 'yes', 'microArch': 'yes'}

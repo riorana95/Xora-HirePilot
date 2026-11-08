@@ -1,19 +1,116 @@
-__pycache__
-.vscode
-.idea
-
-all excels
-all resumes
-logs
-
-old
-
+# ==============================================================================
+# ** CRITICAL: SENSITIVE FILES & CREDENTIALS **
+# Why ignored: These files contain plain-text passwords, LinkedIn/portal credentials,
+# LLM API keys (OpenAI/Gemini), and personally identifiable information (PII)
+# such as phone numbers, addresses, and chat history. NEVER commit these to git!
+# ==============================================================================
+# Credentials, API keys, and sensitive configuration
+config/secrets.py
 secrets.py
 config/personals.py
-.venv
 apikeys.py
-/config/
-/LICENSE
-/README.md
-/walkthrough.md
-config_guide.md
+
+# User profiles containing saved passwords and personal details (JSON format)
+profiles/
+
+# Application logs that record recruiter chats, form answers, and personal data
+logs/
+*.log
+
+
+# ==============================================================================
+# APPLICATION DATA & RUNTIME OUTPUTS
+# Why ignored: User-specific data generated or consumed during automated job
+# applications. Includes applied job tracking sheets, resumes, and error dumps.
+# ==============================================================================
+# Applied job history CSVs and spreadsheets
+all excels/
+all excels
+
+# User resumes (PDF/DOCX/TXT) containing private contact and career info
+all resumes/
+all resumes
+
+# Application failures and debug error data
+failed applications/
+failed applications
+
+# Archived/temporary project data
+old/
+
+
+# ==============================================================================
+# BROWSER & AUTOMATION RUNTIME DATA
+# Why ignored: Selenium/Chrome session data, cache, cookies, and local state
+# used by automated browser instances.
+# ==============================================================================
+# Chrome user profile and session data
+chrome_profile/
+
+
+# ==============================================================================
+# PYTHON STANDARD ARTIFACTS & ENVIRONMENTS
+# Why ignored: Compiled bytecode, virtual environments, build distributions,
+# and environment variable definitions that should not be tracked in version control.
+# ==============================================================================
+# Bytecode and compilation cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python packaging and distributions
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+
+
+# ==============================================================================
+# IDE & CODE EDITOR ARTIFACTS
+# Why ignored: Developer-specific workspace configurations, local IDE caches,
+# and temporary swap files.
+# ==============================================================================
+# Visual Studio Code
+.vscode/
+
+# JetBrains IDEs (PyCharm, IntelliJ, etc.)
+.idea/
+
+# Editor swap and temporary files
+*.swp
+*.swo
+*~
+
+
+# ==============================================================================
+# OPERATING SYSTEM ARTIFACTS
+# Why ignored: OS-generated metadata files, folder views, and thumbnail caches.
+# ==============================================================================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*

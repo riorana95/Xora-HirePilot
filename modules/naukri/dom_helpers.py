@@ -68,8 +68,8 @@ def find_child_attr(card: WebElement, xpaths: list[str], attr: str = "href", def
     return default
 
 
-def click_first(driver: WebDriver, xpaths: list[str], timeout: float = 5.0) -> bool:
-    el = find_first(driver, xpaths, timeout)
+def click_first(driver: WebDriver, xpaths: list[str], timeout: float = 5.0, parent: WebElement | None = None) -> bool:
+    el = find_first(driver, xpaths, timeout, parent=parent)
     if el:
         try:
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)

@@ -131,21 +131,57 @@ def get_log_path():
 
 __logs_file_path = get_log_path()
 
+# The bot subprocess often runs with a piped console whose codec on Windows is
+# cp1252: any log line containing characters like "->"'s fancy cousins (₹, curly
+# quotes, non-Latin letters in job titles) raised UnicodeEncodeError, which
+# killed BOTH the console output and the log.txt write. Force UTF-8 with a
+# replace fallback so a log line can never crash the run.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # non-interactive or exotic streams
+    pass
+
+
+def _console_safe(message: str) -> str:
+    '''Best-effort ASCII-safe form for consoles that cannot print Unicode.'''
+    try:
+        str(message).encode("ascii")
+        return str(message)
+    except UnicodeEncodeError:
+        return str(message).encode("ascii", "replace").decode("ascii")
+
 
 def print_lg(*msgs: str | dict, end: str = "\n", pretty: bool = False, flush: bool = False, from_critical: bool = False) -> None:
     '''
     Function to log and print. **Note that, `end` and `flush` parameters are ignored if `pretty = True`**
+
+    Writes to log.txt first, then prints; each message is isolated in its own
+    try/except so one bad character or a locked log.txt can never lose the
+    remaining messages.
     '''
-    try:
-        for message in msgs:
-            pprint(message) if pretty else print(message, end=end, flush=flush)
+    for message in msgs:
+        text = str(message)
+        # 1) Persistent log file (always UTF-8; a lock only costs this line).
+        try:
             with open(__logs_file_path, 'a+', encoding="utf-8") as file:
-                file.write(str(message) + end)
-    except Exception as e:
-        trail = f'Skipped saving this message: "{message}" to log.txt!' if from_critical else "We'll try one more time to log..."
-        alert(f"log.txt in {logs_folder_path} is open or is occupied by another program! Please close it! {trail}", "Failed Logging")
-        if not from_critical:
-            critical_error_log("Log.txt is open or is occupied by another program!", e)
+                file.write(text + end)
+        except Exception as e:
+            safe = _console_safe(f"[log write failed: {e}] {text}")[:300]
+            try:
+                print(safe, end=end, flush=True)
+            except Exception:
+                pass
+        # 2) Console (dashboard pipe or terminal).
+        try:
+            pprint(message) if pretty else print(text, end=end, flush=flush or not sys.stdout.isatty())
+        except UnicodeEncodeError:
+            try:
+                print(_console_safe(text), end=end, flush=True)
+            except Exception:
+                pass
+        except Exception:
+            pass
 #>
 
 

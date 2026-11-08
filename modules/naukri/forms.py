@@ -23,9 +23,17 @@ re_experience = re.compile(r"(\d+)\s*[-to]*\s*\d*\s*year", re.IGNORECASE)
 
 
 def _salary_variants():
-    desired_salary_lakhs = str(round(desired_salary / 100000, 2))
+    # Configured values under 1000 are treated as already-LPA (25 → "25.0"
+    # lakhs); absolute rupee values are converted (2400000 → "24.0" lakhs).
+    if desired_salary >= 1000:
+        desired_salary_lakhs = str(round(desired_salary / 100000, 2))
+    else:
+        desired_salary_lakhs = str(round(desired_salary, 2))
+    if current_ctc >= 1000:
+        current_ctc_lakhs = str(round(current_ctc / 100000, 2))
+    else:
+        current_ctc_lakhs = str(round(current_ctc, 2))
     desired_salary_monthly = str(round(desired_salary / 12, 2))
-    current_ctc_lakhs = str(round(current_ctc / 100000, 2))
     current_ctc_monthly = str(round(current_ctc / 12, 2))
     notice_period_months = str(notice_period // 30)
     notice_period_weeks = str(notice_period // 7)
@@ -117,20 +125,21 @@ def answer_for_label(label: str, work_location: str = "") -> str:
 
 def _ai_answer(ai_client, ai_provider: str, label: str, job_description: str, options: list[str] | None = None) -> str:
     try:
+        question_type = "single_select" if options else "text"
         if ai_provider == "gemini":
             from modules.ai.geminiConnections import gemini_answer_naukri_question
             return gemini_answer_naukri_question(
                 ai_client, label, options=options,
-                question_type='single_select' if options else 'text',
+                question_type=question_type,
                 job_description=job_description,
                 user_information=user_information_all,
             )
         if ai_provider == "openai":
             from modules.ai.openaiConnections import ai_answer_question
-            return ai_answer_question(ai_client, label, question_type="text", job_description=job_description, user_information_all=user_information_all)
+            return ai_answer_question(ai_client, label, question_type=question_type, job_description=job_description, user_information_all=user_information_all)
         if ai_provider == "deepseek":
             from modules.ai.deepseekConnections import deepseek_answer_question
-            return deepseek_answer_question(ai_client, label, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
+            return deepseek_answer_question(ai_client, label, options=options, question_type=question_type, job_description=job_description, about_company=None, user_information_all=user_information_all)
     except Exception as e:
         print_lg(f"AI answer failed for '{label}': {e}")
     return ""
@@ -147,7 +156,12 @@ def fill_form_fields(
 ) -> set:
     randomly_answered = randomly_answered or set()
     answered: set = set()
-    container = find_first(driver, S.FORM_CONTAINER, timeout=5) or driver
+    # Only fill fields inside a real application form. Falling back to the
+    # whole page would clear and type into unrelated inputs (e.g. the search
+    # bar) on chat-only flows, where no standard form exists at all.
+    container = find_first(driver, S.FORM_CONTAINER, timeout=1)
+    if container is None:
+        return answered
 
     for inp in container.find_elements(By.XPATH, S.FORM_INPUT):
         try:

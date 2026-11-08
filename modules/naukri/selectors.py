@@ -86,8 +86,11 @@ JOB_LINK = [".//a[contains(@class,'title')]", ".//a[contains(@href,'job-listings
 APPLY_BUTTON = [
     ".//button[contains(text(),'Apply')]",
     ".//a[contains(text(),'Apply')]",
-    ".//button[contains(@class,'apply')]",
-    ".//a[contains(@class,'apply')]",
+    ".//button[contains(@class,'apply') or contains(@class,'Apply')]",
+    ".//a[contains(@class,'apply') or contains(@class,'Apply')]",
+    # Walk-in jobs: Naukri replaces the Apply button with "I'm interested"
+    ".//button[contains(normalize-space(.),'interested')]",
+    ".//a[contains(normalize-space(.),'interested')]",
 ]
 ALREADY_APPLIED = [
     ".//button[contains(text(),'Applied')]",
@@ -150,6 +153,7 @@ FORM_CONTAINER = [
     "//div[contains(@class,'application')]",
     "//form[contains(@class,'apply')]",
     "//div[contains(@id,'apply')]",
+    "//div[@role='dialog' and .//form]",
 ]
 FORM_INPUT = ".//input[@type='text' or @type='number' or @type='email' or @type='tel' or not(@type)]"
 FORM_TEXTAREA = ".//textarea"
